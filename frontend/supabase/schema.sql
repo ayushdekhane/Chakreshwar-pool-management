@@ -176,7 +176,7 @@
 -- SERENITY SPORTS CLUB
 -- Swimming Pool Management System
 -- Supabase PostgreSQL Schema
--- Five tables: customers, sessions, payments, costume_rentals, rental_equipment
+-- Six tables: customers, sessions, payments, costume_rentals, rental_equipment, packages
 -- ============================================================
 
 -- UUID support
@@ -201,7 +201,23 @@ CREATE INDEX IF NOT EXISTS idx_customers_name
 
 
 -- ============================================================
--- 2. SESSIONS
+-- 2. PACKAGES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.packages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    description TEXT NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- ============================================================
+-- 3. SESSIONS
 -- One record per swimmer.
 -- Group members share group_code.
 -- ============================================================
@@ -215,6 +231,8 @@ CREATE TABLE IF NOT EXISTS public.sessions (
     group_code TEXT,
     group_name TEXT,
     people_count INTEGER NOT NULL DEFAULT 1 CHECK (people_count >= 1),
+    package_id UUID REFERENCES public.packages(id) ON DELETE SET NULL,
+    package_name TEXT,
 
     entry_time TIMESTAMPTZ NOT NULL,
     scheduled_exit_time TIMESTAMPTZ NOT NULL,
@@ -238,6 +256,10 @@ ALTER TABLE public.sessions
 ALTER TABLE public.sessions
     ADD COLUMN IF NOT EXISTS people_count INTEGER NOT NULL DEFAULT 1
     CHECK (people_count >= 1);
+ALTER TABLE public.sessions
+    ADD COLUMN IF NOT EXISTS package_id UUID REFERENCES public.packages(id) ON DELETE SET NULL;
+ALTER TABLE public.sessions
+    ADD COLUMN IF NOT EXISTS package_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_sessions_customer_id
     ON public.sessions(customer_id);
@@ -375,6 +397,7 @@ ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.costume_rentals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.rental_equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
 
 
 -- ============================================================
@@ -556,6 +579,43 @@ CREATE POLICY "Staff update rental_equipment"
     FOR UPDATE TO authenticated
     USING (true)
     WITH CHECK (true);
+
+-- ============================================================
+-- 11. PACKAGES POLICIES
+-- ============================================================
+
+DROP POLICY IF EXISTS "Staff select packages"
+    ON public.packages;
+
+CREATE POLICY "Staff select packages"
+    ON public.packages
+    FOR SELECT TO authenticated
+    USING (true);
+
+DROP POLICY IF EXISTS "Staff insert packages"
+    ON public.packages;
+
+CREATE POLICY "Staff insert packages"
+    ON public.packages
+    FOR INSERT TO authenticated
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Staff update packages"
+    ON public.packages;
+
+CREATE POLICY "Staff update packages"
+    ON public.packages
+    FOR UPDATE TO authenticated
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Staff delete packages"
+    ON public.packages;
+
+CREATE POLICY "Staff delete packages"
+    ON public.packages
+    FOR DELETE TO authenticated
+    USING (true);
 
 NOTIFY pgrst, 'reload schema';
 

@@ -33,6 +33,7 @@ import { sessionService } from '../services/sessionService';
 import { paymentService } from '../services/paymentService';
 import { rentalService } from '../services/rentalService';
 import { equipmentService } from '../services/equipmentService';
+import { packageService } from '../services/packageService';
 import { authService } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { offlineStorage } from '../lib/offline/offline-storage';
@@ -193,10 +194,10 @@ interface PoolStore {
   deleteRental: (rentalId: string) => Promise<void>;
 
   // Package Operations
-  addPackage: (pkg: Omit<Package, 'id'>) => void;
-  updatePackage: (id: string, pkg: Partial<Package>) => void;
-  togglePackageActive: (id: string) => void;
-  archivePackage: (id: string) => void;
+  addPackage: (pkg: Omit<Package, 'id' | 'swimmersCount'>) => Promise<void>;
+  updatePackage: (id: string, pkg: Partial<Package>) => Promise<void>;
+  togglePackageActive: (id: string) => Promise<void>;
+  archivePackage: (id: string) => Promise<void>;
   updateEquipment: (
     id: string,
     updates: Pick<
@@ -345,8 +346,8 @@ function transformDbData(
       groupName: s.group_name || s.group_code || undefined,
       groupCode: s.group_code || undefined,
       peopleCount: isGroup ? Math.max(s.people_count || 0, groupMembersDb.length, 1) : 1,
-      packageId: 'pkg-standard',
-      packageName: `${s.duration_minutes} Mins Session`,
+      packageId: s.package_id || 'pkg-standard',
+      packageName: s.package_name || `${s.duration_minutes} Mins Session`,
       durationMinutes: s.duration_minutes,
       entryTime: s.entry_time,
       scheduledExitTime: s.scheduled_exit_time,
@@ -462,12 +463,13 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     set({ isLoadingData: true });
     try {
-      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment] = await Promise.all([
+      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment, packages] = await Promise.all([
         customerService.getCustomers(),
         sessionService.getSessions(),
         paymentService.getPayments(),
         rentalService.getAllRentals(),
         equipmentService.getAll(),
+        packageService.getAll(),
       ]);
 
       const transformed = transformDbData(
@@ -492,6 +494,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         payments: transformed.payments,
         rentals: transformed.rentals,
         equipment,
+        packages,
         isSupabaseLive: true,
       });
 
@@ -683,7 +686,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const now = new Date();
     const pkg = get().packages.find((p) => p.id === data.packageId);
     const duration = data.customDuration || pkg?.durationMinutes || 60;
-    const swimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price || 100);
+    const swimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price ?? 100);
     const equipment = get().equipment;
 
     const selectedRentals = (data.rentals || []).map((rental) => {
@@ -727,6 +730,8 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
       session_amount: swimCharge,
+      package_id: pkg?.id || null,
+      package_name: pkg?.name || 'Custom Package',
       costume_used: selectedRentals.length > 0,
       status: 'active' as const,
     };
@@ -993,6 +998,9 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   createGroupSession: async (data) => {
     const now = new Date();
     const pkg = get().packages.find((p) => p.id === data.packageId);
+    if (!pkg) {
+      throw new Error('The selected package is no longer available. Choose an active package and try again.');
+    }
     const duration = data.customDuration || pkg?.durationMinutes || 60;
     const scheduledExit = new Date(now.getTime() + duration * 60000).toISOString();
     const groupCode = `GRP-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
@@ -1042,6 +1050,8 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       group_code: groupCode,
       group_name: groupName,
       people_count: data.memberCount,
+      package_id: pkg.id,
+      package_name: pkg.name,
       entry_time: now.toISOString(),
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
@@ -1883,31 +1893,35 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     });
   },
 
-  addPackage: (pkgData) => {
-    const newPkg: Package = {
-      ...pkgData,
-      id: `pkg-${Date.now().toString().slice(-5)}`,
-      swimmersCount: 0,
-    };
+  addPackage: async (pkgData) => {
+    const newPkg = await packageService.create(pkgData);
     set((state) => ({ packages: [...state.packages, newPkg] }));
   },
 
-  updatePackage: (id, updates) =>
+  updatePackage: async (id, updates) => {
+    await packageService.update(id, updates);
     set((state) => ({
       packages: state.packages.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-    })),
+    }));
+  },
 
-  togglePackageActive: (id) =>
+  togglePackageActive: async (id) => {
+    const pkg = get().packages.find((item) => item.id === id);
+    if (!pkg) throw new Error('Package was not found.');
+    await packageService.update(id, { isActive: !pkg.isActive });
     set((state) => ({
       packages: state.packages.map((p) =>
         p.id === id ? { ...p, isActive: !p.isActive } : p
       ),
-    })),
+    }));
+  },
 
-  archivePackage: (id) =>
+  archivePackage: async (id) => {
+    await packageService.remove(id);
     set((state) => ({
       packages: state.packages.filter((p) => p.id !== id),
-    })),
+    }));
+  },
 
   updateEquipment: async (id, updates) => {
     if (

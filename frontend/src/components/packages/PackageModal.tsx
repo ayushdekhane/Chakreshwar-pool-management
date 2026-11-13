@@ -16,6 +16,7 @@ export const PackageModal: React.FC = () => {
   const [price, setPrice] = useState(100);
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (selectedPackage) {
@@ -33,7 +34,7 @@ export const PackageModal: React.FC = () => {
     }
   }, [selectedPackage]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       toast.error('Package name is required.');
@@ -44,27 +45,35 @@ export const PackageModal: React.FC = () => {
       return;
     }
 
-    if (selectedPackage) {
-      updatePackage(selectedPackage.id, {
-        name,
-        durationMinutes,
-        price,
-        description,
-        isActive,
-      });
-      toast.success(`Package "${name}" updated!`);
-    } else {
-      addPackage({
-        name,
-        durationMinutes,
-        price,
-        description,
-        isActive,
-      });
-      toast.success(`New package "${name}" created!`);
-    }
+    setSaving(true);
+    try {
+      if (selectedPackage) {
+        await updatePackage(selectedPackage.id, {
+          name,
+          durationMinutes,
+          price,
+          description,
+          isActive,
+        });
+        toast.success(`Package "${name}" updated!`);
+      } else {
+        await addPackage({
+          name,
+          durationMinutes,
+          price,
+          description,
+          isActive,
+        });
+        toast.success(`New package "${name}" created!`);
+      }
 
-    closeModal();
+      closeModal();
+    } catch (err: any) {
+      console.error('Package save failed:', err);
+      toast.error(err?.message || 'Failed to save package to Supabase.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -157,14 +166,16 @@ export const PackageModal: React.FC = () => {
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md"
+            disabled={saving}
+            className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{selectedPackage ? 'Save Changes' : 'Create Package'}</span>
+            <span>
+              {saving ? 'Saving...' : selectedPackage ? 'Save Changes' : 'Create Package'}
+            </span>
           </button>
         </div>
       </form>
     </Modal>
   );
 };
-

@@ -11,7 +11,7 @@ import { formatCurrency } from '../../utils';
 const schema = z.object({
   customerName: z.string().min(2, 'Name must be at least 2 characters'),
   customerPhone: z.string().min(10, 'Enter a valid 10-digit phone number'),
-  packageId: z.string().min(1, 'Please select a package'),
+  packageId: z.string(),
   customDuration: z.union([z.number().min(10).max(360), z.nan()]).optional(),
   customAmount: z.union([z.number().min(0), z.nan()]).optional(),
   paymentStatus: z.enum(['paid', 'partial', 'unpaid']),
@@ -39,6 +39,7 @@ export const IndividualEntryModal: React.FC = () => {
     register,
     handleSubmit,
     setValue,
+    getValues,
     watch,
     reset,
     formState: { errors },
@@ -47,11 +48,11 @@ export const IndividualEntryModal: React.FC = () => {
     defaultValues: {
       customerName: '',
       customerPhone: '',
-      packageId: packages[0]?.id || 'pkg-60',
+      packageId: packages[0]?.id || '',
       customDuration: undefined,
       customAmount: undefined,
       paymentStatus: 'paid',
-      paidAmount: packages[0]?.price || 100,
+      paidAmount: packages[0]?.price || 0,
       paymentMethod: 'cash',
       paymentRef: '',
     },
@@ -66,12 +67,22 @@ export const IndividualEntryModal: React.FC = () => {
   const selectedPkg = packages.find((p) => p.id === selectedPkgId);
 
   // Compute bill
-  const swimCharge = isCustomPkg ? (watchCustomAmount || 0) : (selectedPkg?.price || 100);
+  const swimCharge = isCustomPkg ? (watchCustomAmount || 0) : (selectedPkg?.price || 0);
   const rentalCharge = equipment.reduce((total, item) => {
     const rental = selectedAccessories[item.id];
     return total + item.defaultRate * (rental?.quantity || 0);
   }, 0);
   const totalBill = swimCharge + rentalCharge;
+
+  useEffect(() => {
+    if (
+      !isCustomPkg &&
+      packages.length > 0 &&
+      !packages.some((pkg) => pkg.id === getValues('packageId'))
+    ) {
+      setValue('packageId', packages[0].id);
+    }
+  }, [getValues, isCustomPkg, packages, setValue]);
 
   // Auto update paid amount when bill changes if full payment is selected
   useEffect(() => {
@@ -83,6 +94,11 @@ export const IndividualEntryModal: React.FC = () => {
   }, [totalBill, watchPaymentStatus, setValue]);
 
   const onSubmit = async (data: FormData) => {
+    if (!isCustomPkg && !selectedPkg) {
+      toast.error('Create and activate a package, or choose custom duration/rate.');
+      return;
+    }
+
     const rentalItems = equipment
       .filter((item) => selectedAccessories[item.id])
       .map((item) => ({
@@ -186,7 +202,15 @@ export const IndividualEntryModal: React.FC = () => {
             </label>
             <button
               type="button"
-              onClick={() => setIsCustomPkg(!isCustomPkg)}
+              onClick={() => {
+                if (isCustomPkg) {
+                  if (packages[0]) setValue('packageId', packages[0].id);
+                  setIsCustomPkg(false);
+                } else {
+                  setValue('packageId', '');
+                  setIsCustomPkg(true);
+                }
+              }}
               className="text-xs font-bold text-[#087FA5] hover:underline"
             >
               {isCustomPkg ? '← Choose Standard Package' : '+ Custom Duration/Rate'}
@@ -194,6 +218,12 @@ export const IndividualEntryModal: React.FC = () => {
           </div>
 
           {!isCustomPkg ? (
+            <>
+            {packages.length === 0 && (
+              <p className="mb-2 text-xs text-amber-700">
+                No active packages are available. Create one in Packages or use a custom duration and rate.
+              </p>
+            )}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {packages.map((pkg) => {
                 const isSelected = selectedPkgId === pkg.id;
@@ -224,6 +254,7 @@ export const IndividualEntryModal: React.FC = () => {
                 );
               })}
             </div>
+            </>
           ) : (
             <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200 grid grid-cols-2 gap-3">
               <div>
@@ -418,7 +449,8 @@ export const IndividualEntryModal: React.FC = () => {
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md shadow-[#087FA5]/25 active:scale-95 transition-all"
+            disabled={!isCustomPkg && !selectedPkg}
+            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md shadow-[#087FA5]/25 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <PlusCircle className="w-4 h-4" />
             <span>Confirm & Start Swimming</span>

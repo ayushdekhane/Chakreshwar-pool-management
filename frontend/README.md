@@ -53,10 +53,12 @@ Open your Supabase Project dashboard, go to the **SQL Editor**, and run the SQL 
 
 This script will:
 - Enable the `uuid-ossp` extension.
-- Create the five tables (`customers`, `sessions`, `payments`, `costume_rentals`, `rental_equipment`).
+- Create the management tables, including `packages`.
 - Add foreign keys, primary keys, and indexes for fast mobile, session date, and payment searches.
-- Enable Row Level Security (RLS) on all five tables.
+- Enable Row Level Security (RLS) on the tables.
 - Add policies allowing authenticated staff to perform SELECT, INSERT, UPDATE, and DELETE operations.
+
+If your Supabase database was already set up, run `supabase/packages_migration.sql` in the SQL Editor once. It creates the packages table and adds package details to session records so individual and group registrations retain their selected package.
 
 ### 2. (Optional) Run PWA Offline Sync Migration
 `supabase/pwa_offline_migration.sql`

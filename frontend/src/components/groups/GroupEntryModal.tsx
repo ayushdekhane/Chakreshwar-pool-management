@@ -31,7 +31,7 @@ export const GroupEntryModal: React.FC = () => {
   const createGroupSession = usePoolStore((state) => state.createGroupSession);
   const [selectedAccessories, setSelectedAccessories] = useState<Record<string, number>>({});
 
-  const defaultPkg = packages[0] || { id: 'pkg-60', price: 100, durationMinutes: 60 };
+  const defaultPkg = packages[0];
 
   const {
     register,
@@ -47,11 +47,11 @@ export const GroupEntryModal: React.FC = () => {
     defaultValues: {
       leaderName: '',
       leaderPhone: '',
-      packageId: defaultPkg.id,
+      packageId: defaultPkg?.id || '',
       customDuration: undefined,
       memberCount: 2,
-      totalPrice: defaultPkg.price * 2,
-      initialPayment: defaultPkg.price * 2,
+      totalPrice: (defaultPkg?.price || 0) * 2,
+      initialPayment: (defaultPkg?.price || 0) * 2,
       paymentMethod: 'cash',
       paymentRef: '',
       notes: '',
@@ -60,16 +60,28 @@ export const GroupEntryModal: React.FC = () => {
 
   const watchPkgId = watch('packageId');
   const memberCount = watch('memberCount');
-  const selectedPkg = packages.find((p) => p.id === watchPkgId) || defaultPkg;
+  const selectedPkg = packages.find((p) => p.id === watchPkgId);
 
   const calculatedTotal =
-    Number.isInteger(memberCount) && memberCount >= 2 ? selectedPkg.price * memberCount : 0;
+    Number.isInteger(memberCount) && memberCount >= 2
+      ? (selectedPkg?.price || 0) * memberCount
+      : 0;
   const rentalTotal = equipment.reduce(
     (total, item) => total + item.defaultRate * (selectedAccessories[item.id] || 0),
     0
   );
   const groupTotal = calculatedTotal + rentalTotal;
   const previousGroupTotal = useRef(groupTotal);
+
+  useEffect(() => {
+    if (packages.length > 0 && !packages.some((pkg) => pkg.id === getValues('packageId'))) {
+      const nextPackage = packages[0];
+      const nextTotal = nextPackage.price * getValues('memberCount');
+      setValue('packageId', nextPackage.id);
+      setValue('totalPrice', nextTotal);
+      setValue('initialPayment', nextTotal);
+    }
+  }, [getValues, packages, setValue]);
 
   useEffect(() => {
     const initialPayment = getValues('initialPayment');
@@ -87,6 +99,11 @@ export const GroupEntryModal: React.FC = () => {
   }, [activeModal]);
 
   const onSubmit = async (data: FormData) => {
+    if (!selectedPkg) {
+      toast.error('Create and activate a package before registering a group.');
+      return;
+    }
+
     const rentalItems = equipment
       .filter((item) => (selectedAccessories[item.id] || 0) > 0)
       .map((item) => ({
@@ -275,8 +292,13 @@ export const GroupEntryModal: React.FC = () => {
         {/* Package Selection */}
         <div>
           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-            Select Shared Swimming Package ({selectedPkg.durationMinutes} mins per member)
+            Select Shared Swimming Package ({selectedPkg?.durationMinutes ?? '—'} mins per member)
           </label>
+          {packages.length === 0 && (
+            <p className="mb-2 text-xs text-amber-700">
+              No active packages are available. Create and activate one in Packages first.
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {packages.map((pkg) => (
               <button
@@ -307,7 +329,7 @@ export const GroupEntryModal: React.FC = () => {
         <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-300 pb-2 border-b border-slate-800">
             <span>
-              {memberCount} Members × {formatCurrency(selectedPkg.price)}
+              {memberCount} Members × {formatCurrency(selectedPkg?.price || 0)}
             </span>
             <span className="text-sm font-extrabold text-[#EFB33A]">
               Group Total: {formatCurrency(groupTotal)}
@@ -396,7 +418,8 @@ export const GroupEntryModal: React.FC = () => {
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#70218C] hover:bg-[#58186f] rounded-xl shadow-md shadow-[#70218C]/25 active:scale-95 transition-all"
+            disabled={!selectedPkg}
+            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#70218C] hover:bg-[#58186f] rounded-xl shadow-md shadow-[#70218C]/25 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-4 h-4" />
             <span>Confirm & Start Group Session</span>

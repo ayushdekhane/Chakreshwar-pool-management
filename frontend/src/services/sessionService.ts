@@ -86,6 +86,8 @@ export const sessionService = {
     group_code?: string | null;
     group_name?: string | null;
     people_count?: number;
+    package_id?: string | null;
+    package_name?: string | null;
     entry_time: string;
     scheduled_exit_time: string;
     duration_minutes: number;
@@ -110,6 +112,8 @@ export const sessionService = {
         ...(data.group_code !== undefined ? { group_code: data.group_code } : {}),
         ...(data.group_name !== undefined ? { group_name: data.group_name } : {}),
         ...(data.people_count !== undefined ? { people_count: data.people_count } : {}),
+        ...(data.package_id !== undefined ? { package_id: data.package_id } : {}),
+        ...(data.package_name !== undefined ? { package_name: data.package_name } : {}),
         entry_time: data.entry_time,
         scheduled_exit_time: data.scheduled_exit_time,
         duration_minutes: data.duration_minutes,

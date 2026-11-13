@@ -30,15 +30,25 @@ export const Packages: React.FC = () => {
     return true;
   });
 
-  const handleToggle = (pkg: Package) => {
-    togglePackageActive(pkg.id);
-    toast.info(`Package "${pkg.name}" is now ${pkg.isActive ? 'Inactive' : 'Active'}.`);
+  const handleToggle = async (pkg: Package) => {
+    try {
+      await togglePackageActive(pkg.id);
+      toast.info(`Package "${pkg.name}" is now ${pkg.isActive ? 'Inactive' : 'Active'}.`);
+    } catch (err: any) {
+      console.error('Package status update failed:', err);
+      toast.error(err?.message || 'Failed to update package status.');
+    }
   };
 
-  const handleArchive = (pkg: Package) => {
+  const handleArchive = async (pkg: Package) => {
     if (window.confirm(`Are you sure you want to remove package "${pkg.name}"?`)) {
-      archivePackage(pkg.id);
-      toast.success(`Package "${pkg.name}" deleted.`);
+      try {
+        await archivePackage(pkg.id);
+        toast.success(`Package "${pkg.name}" deleted.`);
+      } catch (err: any) {
+        console.error('Package deletion failed:', err);
+        toast.error(err?.message || 'Failed to delete package.');
+      }
     }
   };
 
@@ -200,4 +210,3 @@ export const Packages: React.FC = () => {
     </div>
   );
 };
-

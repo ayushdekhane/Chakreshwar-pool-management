@@ -13,6 +13,8 @@ export interface DbSession {
   group_code: string | null;
   group_name?: string | null;
   people_count?: number;
+  package_id?: string | null;
+  package_name?: string | null;
   entry_time: string;
   scheduled_exit_time: string;
   actual_exit_time: string | null;

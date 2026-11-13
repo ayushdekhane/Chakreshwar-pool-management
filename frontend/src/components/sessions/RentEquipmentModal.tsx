@@ -31,6 +31,10 @@ export const RentEquipmentModal: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedEq) {
+      toast.error('Add equipment to inventory before issuing a rental.');
+      return;
+    }
     if (!sessionId && !guestName.trim()) {
       toast.error('Please assign rental to an active session or enter guest name.');
       return;
@@ -72,6 +76,7 @@ export const RentEquipmentModal: React.FC = () => {
       subtitle="Rent costumes, goggles, towels and floats to pool guests"
       maxWidth="lg"
     >
+      {selectedEq ? (
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Guest or Session Target */}
         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
@@ -244,6 +249,15 @@ export const RentEquipmentModal: React.FC = () => {
           </button>
         </div>
       </form>
+      ) : (
+        <div className="flex flex-col items-center text-center py-8">
+          <Shirt className="w-10 h-10 text-slate-400 mb-3" />
+          <h4 className="text-sm font-bold text-slate-800">No equipment available</h4>
+          <p className="text-xs text-slate-500 mt-1">
+            Add equipment to inventory before issuing a rental.
+          </p>
+        </div>
+      )}
     </Modal>
   );
 };

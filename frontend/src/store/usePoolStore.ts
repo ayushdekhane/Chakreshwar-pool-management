@@ -214,8 +214,6 @@ interface PoolStore {
   clearDemonstrationData: () => void;
 }
 
-const initialDemo = generateInitialDemonstrationData();
-
 function mapDbPaymentMethod(dbMethod: DbPaymentMethod | string): PaymentMethod {
   if (dbMethod === 'cash') return 'cash';
   return 'online';
@@ -371,12 +369,12 @@ function transformDbData(
 }
 
 export const usePoolStore = create<PoolStore>((set, get) => ({
-  sessions: initialDemo.sessions,
-  payments: initialDemo.payments,
-  rentals: initialDemo.rentals,
-  packages: initialPackages,
-  customers: initialCustomers,
-  equipment: initialEquipment,
+  sessions: [],
+  payments: [],
+  rentals: [],
+  packages: [],
+  customers: [],
+  equipment: [],
   settings: initialSettings,
   alerts: [],
   currentTime: new Date(),
@@ -469,7 +467,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         sessionService.getSessions(),
         paymentService.getPayments(),
         rentalService.getAllRentals(),
-        equipmentService.getAll(initialEquipment),
+        equipmentService.getAll(),
       ]);
 
       const transformed = transformDbData(

@@ -26,8 +26,8 @@ const toDatabaseRow = (equipment: Equipment) => ({
 });
 
 export const equipmentService = {
-  async getAll(defaultEquipment: Equipment[]): Promise<Equipment[]> {
-    if (!isSupabaseConfigured) return defaultEquipment;
+  async getAll(): Promise<Equipment[]> {
+    if (!isSupabaseConfigured) return [];
 
     const { data, error } = await supabase
       .from('rental_equipment')
@@ -39,25 +39,7 @@ export const equipmentService = {
       throw error;
     }
 
-    const existing = (data || []) as DbRentalEquipment[];
-    const existingIds = new Set(existing.map((item) => item.id));
-    const missingDefaults = defaultEquipment.filter((item) => !existingIds.has(item.id));
-
-    if (missingDefaults.length > 0) {
-      const { data: inserted, error: insertError } = await supabase
-        .from('rental_equipment')
-        .insert(missingDefaults.map(toDatabaseRow))
-        .select('*');
-
-      if (insertError) {
-        console.error('Error initializing rental equipment settings:', insertError.message);
-        throw insertError;
-      }
-
-      existing.push(...((inserted || []) as DbRentalEquipment[]));
-    }
-
-    return existing.map(toEquipment);
+    return ((data || []) as DbRentalEquipment[]).map(toEquipment);
   },
 
   async save(equipment: Equipment): Promise<void> {

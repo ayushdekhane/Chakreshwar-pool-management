@@ -29,6 +29,7 @@ import { CheckoutModal } from '../sessions/CheckoutModal';
 export const Layout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const initializeOfflineData = usePoolStore((state) => state.initializeOfflineData);
   const fetchAllData = usePoolStore((state) => state.fetchAllData);
   const currentUser = usePoolStore((state) => state.currentUser);
@@ -66,6 +67,9 @@ export const Layout: React.FC = () => {
     const { data: authListener } = authService.onAuthStateChange((event, session) => {
       if (!isMounted) return;
       const user = session?.user || null;
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+      }
       setCurrentUser(user);
       if (user && event === 'SIGNED_IN') {
         fetchAllData();
@@ -87,6 +91,15 @@ export const Layout: React.FC = () => {
           Verifying staff authorization...
         </span>
       </div>
+    );
+  }
+
+  if (isPasswordRecovery) {
+    return (
+      <StaffAuthScreen
+        isPasswordRecovery
+        onPasswordUpdated={() => setIsPasswordRecovery(false)}
+      />
     );
   }
 

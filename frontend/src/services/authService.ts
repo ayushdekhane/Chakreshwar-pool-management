@@ -84,10 +84,27 @@ export const authService = {
   /**
    * Send password recovery email
    */
-  async resetPasswordForEmail(email: string): Promise<void> {
-    if (!isSupabaseConfigured) return;
+  async resetPasswordForEmail(email: string, redirectTo: string): Promise<void> {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured. Please check the Supabase environment variables.');
+    }
     const cleanEmail = email.trim().toLowerCase();
-    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail);
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+      redirectTo,
+    });
+    if (error) {
+      throw new Error(error.message);
+    }
+  },
+
+  /**
+   * Update the password for an authenticated recovery session
+   */
+  async updatePassword(password: string): Promise<void> {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured. Please check the Supabase environment variables.');
+    }
+    const { error } = await supabase.auth.updateUser({ password });
     if (error) {
       throw new Error(error.message);
     }

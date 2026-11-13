@@ -76,6 +76,13 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 In the Supabase Dashboard, navigate to **Authentication** > **Users** > **Add User** > **Create User**.
 Enter a staff email (e.g. `staff@serenitysports.com`) and password.
 
+### 5. Configure Password Reset
+In Supabase, open **Authentication** > **URL Configuration**:
+- Set **Site URL** to your deployed app's HTTPS origin.
+- Add that same origin to **Redirect URLs**. Also allow `http://localhost:3000` if you use local development.
+
+The app requests a reset-link redirect to the origin currently serving the login page. If the origin is not allowlisted, or the deployed build is outdated, Supabase may use the **Site URL** instead. After changing these settings, request a new reset email; old links keep their original destination.
+
 ---
 
 ## 🚀 Running Locally

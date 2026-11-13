@@ -1,0 +1,13 @@
+{
+  "name": "serenity-pool-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Serenity Sports Club – Swimming Pool Management System",
+  "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "preview": "npm --prefix frontend run preview",
+    "install:frontend": "npm --prefix frontend install"
+  }
+}
+

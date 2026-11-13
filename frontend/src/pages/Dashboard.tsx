@@ -232,7 +232,17 @@ export const Dashboard: React.FC = () => {
                         </div>
                       </div>
 
-                      <SessionStatusBadge status={session.status} size="sm" />
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <SessionStatusBadge status={session.status} size="sm" />
+                        {(session.id.startsWith('sess-') || session.id.startsWith('grp-sess-')) && (
+                          <span
+                            className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                            title="Created offline. Will sync with Supabase when connected."
+                          >
+                            Pending Sync
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Timer & Duration Display */}

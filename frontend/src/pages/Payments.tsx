@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   FileSpreadsheet,
   Trash2,
+  Clock,
 } from 'lucide-react';
 import { usePoolStore } from '../store/usePoolStore';
 import { StatCard } from '../components/common/StatCard';
@@ -302,12 +303,23 @@ export const Payments: React.FC = () => {
 
                       {/* Status */}
                       <td className="py-3.5 px-4">
-                        <span
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Success
-                        </span>
+                        {p.id.startsWith('pay-') ? (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800"
+                            title="Locally recorded staff entry. Will synchronize with Supabase ledger when online."
+                          >
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            Local (Pending Sync)
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800"
+                            title="Server-confirmed payment in Supabase ledger"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            Confirmed
+                          </span>
+                        )}
                       </td>
 
                       {/* Actions */}

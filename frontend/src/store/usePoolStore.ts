@@ -17,6 +17,7 @@ import {
   DbSession,
   DbPayment,
   DbCostumeRental,
+  DbRentalEquipment,
   DbPaymentMethod,
 } from '../types/database';
 import {
@@ -34,6 +35,11 @@ import { rentalService } from '../services/rentalService';
 import { equipmentService } from '../services/equipmentService';
 import { authService } from '../services/authService';
 import { isSupabaseConfigured } from '../lib/supabase';
+import { offlineStorage } from '../lib/offline/offline-storage';
+import { syncQueue } from '../lib/offline/sync-queue';
+import { syncEngine } from '../lib/offline/sync-engine';
+import { connectivity } from '../lib/offline/connectivity';
+import { toast } from 'sonner';
 
 interface PoolStore {
   // Data
@@ -52,6 +58,7 @@ interface PoolStore {
   isLoadingData: boolean;
   currentUser: User | null;
   setCurrentUser: (user: User | null) => void;
+  initializeOfflineData: () => Promise<void>;
   fetchAllData: () => Promise<void>;
 
   // Active Modals & Selection
@@ -148,6 +155,7 @@ interface PoolStore {
     referenceNumber?: string;
     notes?: string;
   }) => Promise<void>;
+
   cancelSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
 
@@ -216,6 +224,33 @@ function mapDbPaymentMethod(dbMethod: DbPaymentMethod | string): PaymentMethod {
 function mapFrontendPaymentMethod(method: PaymentMethod): DbPaymentMethod {
   if (method === 'cash') return 'cash';
   return 'other';
+}
+
+function toEquipment(row: DbRentalEquipment): Equipment {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    sizes: row.sizes,
+    defaultRate: Number(row.default_rate),
+    defaultDeposit: Number(row.default_deposit),
+    totalStock: row.total_stock,
+    availableStock: row.available_stock,
+  };
+}
+
+function toDbRentalEquipment(item: Equipment): DbRentalEquipment {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    sizes: item.sizes,
+    default_rate: item.defaultRate,
+    default_deposit: item.defaultDeposit,
+    total_stock: item.totalStock,
+    available_stock: item.availableStock,
+    updated_at: new Date().toISOString(),
+  };
 }
 
 function transformDbData(
@@ -296,7 +331,6 @@ function transformDbData(
     const sessionRentals = rentals.filter((r) => r.sessionId === s.id);
 
     const paidSum = sessionPayments.reduce((sum, p) => sum + p.amount, 0);
-
     const rentalCharges = sessionRentals.reduce((sum, r) => sum + r.totalRentalAmount, 0);
     const swimmingCharges = Number(s.session_amount);
     const totalCharges = swimmingCharges + rentalCharges;
@@ -377,12 +411,54 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       selectedPackage: null,
     }),
 
+  /**
+   * Fast startup hydration from IndexedDB.
+   * Immediately displays stored records before any network request starts.
+   */
+  initializeOfflineData: async () => {
+    try {
+      const offline = await offlineStorage.hydrateOfflineData();
+      if (offline.customers.length > 0 || offline.sessions.length > 0) {
+        const transformed = transformDbData(
+          offline.sessions,
+          offline.payments,
+          offline.rentals,
+          offline.customers
+        );
+
+        set({
+          customers: transformed.customers,
+          sessions: transformed.sessions,
+          payments: transformed.payments,
+          rentals: transformed.rentals,
+          equipment:
+            offline.equipment.length > 0
+              ? offline.equipment.map(toEquipment)
+              : get().equipment,
+        });
+      }
+    } catch (err: any) {
+      console.warn('[OfflineHydration] Could not hydrate from IndexedDB:', err.message);
+    }
+  },
+
+  /**
+   * Fetch latest data from Supabase when online and persist to IndexedDB snapshot.
+   * If offline, loads from IndexedDB without failing.
+   */
   fetchAllData: async () => {
     if (!isSupabaseConfigured) return;
+
+    // Check if offline: hydrate from IndexedDB
+    if (!connectivity.isOnline()) {
+      await get().initializeOfflineData();
+      return;
+    }
 
     // Do not attempt authenticated fetch if no staff session is present
     const user = get().currentUser;
     if (!user) {
+      await get().initializeOfflineData();
       return;
     }
 
@@ -403,6 +479,15 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         dbCustomers
       );
 
+      // Persist snapshot to IndexedDB
+      await offlineStorage.saveSnapshotToStorage({
+        customers: dbCustomers,
+        sessions: dbSessions,
+        payments: dbPayments,
+        rentals: dbRentals,
+        equipment: equipment.map(toDbRentalEquipment),
+      });
+
       set({
         customers: transformed.customers,
         sessions: transformed.sessions,
@@ -411,9 +496,18 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         equipment,
         isSupabaseLive: true,
       });
+
+      // Synchronize any pending offline mutations
+      syncEngine.syncNow().catch((e) => console.warn('Background sync error:', e));
     } catch (err: any) {
       console.error('Error synchronizing data with Supabase:', err.message);
-      if (err.status === 401 || err.message?.includes('JWT') || err.message?.includes('unauthorized')) {
+      // Fallback to IndexedDB
+      await get().initializeOfflineData();
+      if (
+        err.status === 401 ||
+        err.message?.includes('JWT') ||
+        err.message?.includes('unauthorized')
+      ) {
         set({ currentUser: null });
       }
     } finally {
@@ -448,52 +542,52 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
       if (isExpired) {
         newStatus = 'expired';
-        const alertExists = newAlerts.some(
-          (a) => a.sessionId === sess.id && a.type === 'expired' && !a.isDismissed
+        const alreadyAlerted = alerts.some(
+          (a) => a.sessionId === sess.id && a.type === 'expired'
         );
-        if (!alertExists && sess.status !== 'expired') {
-          newAlerts.unshift({
+        if (!alreadyAlerted) {
+          hasExpiredTriggered = true;
+          newAlerts.push({
             id: `alert-exp-${sess.id}-${Date.now()}`,
             sessionId: sess.id,
             customerName: sess.customerName,
             type: 'expired',
-            message: `Session for ${sess.customerName} (${sess.type === 'group' ? sess.groupName || 'Group' : 'Individual'}) has EXPIRED!`,
+            message: `${sess.customerName}'s session duration has expired! Overtime charges apply.`,
             timestamp: now.toISOString(),
             isDismissed: false,
           });
-          hasExpiredTriggered = true;
         }
       } else if (isExpiringSoon) {
         newStatus = 'expiring';
-        const alertExists = newAlerts.some(
-          (a) => a.sessionId === sess.id && a.type === 'expiring_soon' && !a.isDismissed
+        const alreadyAlerted = alerts.some(
+          (a) => a.sessionId === sess.id && a.type === 'expiring_soon'
         );
-        if (!alertExists && sess.status === 'active') {
-          newAlerts.unshift({
+        if (!alreadyAlerted) {
+          hasWarningTriggered = true;
+          newAlerts.push({
             id: `alert-warn-${sess.id}-${Date.now()}`,
             sessionId: sess.id,
             customerName: sess.customerName,
             type: 'expiring_soon',
-            message: `Session for ${sess.customerName} ends in under 5 minutes.`,
+            message: `${sess.customerName}'s swim time ends in 5 minutes!`,
             timestamp: now.toISOString(),
             isDismissed: false,
           });
-          hasWarningTriggered = true;
         }
       } else {
         newStatus = 'active';
       }
 
-      if (newStatus !== sess.status) {
-        return { ...sess, status: newStatus };
-      }
-      return sess;
+      return {
+        ...sess,
+        status: newStatus,
+      };
     });
 
     if (settings.soundEnabled) {
-      if (hasExpiredTriggered && settings.expiryAlarm) {
+      if (hasExpiredTriggered) {
         playAlertSound('expired', settings.soundVolume);
-      } else if (hasWarningTriggered && settings.fiveMinuteWarning) {
+      } else if (hasWarningTriggered) {
         playAlertSound('warning', settings.soundVolume);
       }
     }
@@ -516,18 +610,69 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     })),
 
   addCustomer: async (custData) => {
-    const dbCust = await customerService.addCustomer({
-      name: custData.name,
-      mobile: custData.phone,
-    });
+    const cleanedMobile = custData.phone.trim();
+    const cleanedName = custData.name.trim();
 
+    // Check if customer already exists in store
+    const existing = get().customers.find((c) => c.phone === cleanedMobile);
+    if (existing) {
+      return existing;
+    }
+
+    let customerId = crypto.randomUUID ? crypto.randomUUID() : `cust-${Date.now()}`;
+    let isCreatedOffline = false;
+
+    if (isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        const dbCust = await customerService.addCustomer({
+          name: cleanedName,
+          mobile: cleanedMobile,
+        });
+        customerId = dbCust.id;
+        await offlineStorage.saveLocalCustomer({
+          ...dbCust,
+          _syncStatus: 'synced',
+          _localOnly: false,
+          _lastSyncedAt: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        console.warn('[addCustomer] Online customer creation failed, saving offline:', err.message);
+        isCreatedOffline = true;
+      }
+    } else {
+      isCreatedOffline = true;
+    }
+
+    const nowIso = new Date().toISOString();
     const newCust: Customer = {
-      id: dbCust.id,
-      name: dbCust.name,
-      phone: dbCust.mobile,
-      createdAt: dbCust.created_at,
+      id: customerId,
+      name: cleanedName,
+      phone: cleanedMobile,
+      createdAt: nowIso,
       totalVisits: 1,
     };
+
+    if (isCreatedOffline) {
+      await offlineStorage.saveLocalCustomer({
+        id: customerId,
+        name: cleanedName,
+        mobile: cleanedMobile,
+        created_at: nowIso,
+        _syncStatus: 'pending',
+        _localOnly: true,
+      });
+
+      await syncQueue.enqueue({
+        entityType: 'customer',
+        entityId: customerId,
+        operation: 'insert',
+        payload: {
+          id: customerId,
+          name: cleanedName,
+          mobile: cleanedMobile,
+        },
+      });
+    }
 
     set((state) => ({
       customers: [newCust, ...state.customers.filter((c) => c.phone !== newCust.phone && c.id !== newCust.id)],
@@ -542,6 +687,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const duration = data.customDuration || pkg?.durationMinutes || 60;
     const swimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price || 100);
     const equipment = get().equipment;
+
     const selectedRentals = (data.rentals || []).map((rental) => {
       const item = equipment.find((candidate) => candidate.id === rental.equipmentId);
       if (!item) {
@@ -565,7 +711,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       };
     });
 
-    let cust = await get().addCustomer({
+    const cust = await get().addCustomer({
       name: data.customerName,
       phone: data.customerPhone,
       age: data.customerAge,
@@ -573,35 +719,128 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     });
 
     const scheduledExit = new Date(now.getTime() + duration * 60000).toISOString();
+    const isOnline = isSupabaseConfigured && connectivity.isOnline();
+    let sessionId = crypto.randomUUID ? crypto.randomUUID() : `sess-${Date.now()}`;
+    let isOfflineSession = false;
 
-    const dbSession = await sessionService.createSession({
+    const sessionPayload = {
       customer_id: cust.id,
       entry_time: now.toISOString(),
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
       session_amount: swimCharge,
       costume_used: selectedRentals.length > 0,
-      status: 'active',
-    });
+      status: 'active' as const,
+    };
 
-    const sessionId = dbSession.id;
+    if (isOnline) {
+      try {
+        const dbSession = await sessionService.createSession(sessionPayload);
+        sessionId = dbSession.id;
+        await offlineStorage.saveLocalSession({
+          ...dbSession,
+          _syncStatus: 'synced',
+          _localOnly: false,
+          _lastSyncedAt: now.toISOString(),
+        });
+      } catch (err: any) {
+        console.warn('[createIndividualSession] Online save failed, queuing offline:', err.message);
+        isOfflineSession = true;
+      }
+    } else {
+      isOfflineSession = true;
+    }
 
+    if (isOfflineSession) {
+      await offlineStorage.saveLocalSession({
+        id: sessionId,
+        ...sessionPayload,
+        actual_exit_time: null,
+        actual_duration_minutes: null,
+        group_code: null,
+        group_name: null,
+        people_count: 1,
+        created_at: now.toISOString(),
+        _syncStatus: 'pending',
+        _localOnly: true,
+      });
+
+      await syncQueue.enqueue({
+        entityType: 'session',
+        entityId: sessionId,
+        operation: 'insert',
+        payload: {
+          id: sessionId,
+          ...sessionPayload,
+        },
+        dependencyId: cust.id,
+      });
+      toast.info('Session saved offline. Will synchronize once internet returns.');
+    }
+
+    // Rentals
     const sessionRentals: RentalItem[] = [];
     for (const rental of selectedRentals) {
       const totalRental = rental.pricePerItem * rental.quantity;
-      const dbRental = await rentalService.addRental({
-        session_id: sessionId,
-        item_name: rental.item.name,
-        quantity: rental.quantity,
-        rental_charge: totalRental,
-      });
-      await equipmentService.updateAvailableStock(
-        rental.item.id,
-        rental.item.availableStock - rental.quantity
-      );
+      let rentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      let isOfflineRental = false;
+
+      if (!isOfflineSession && isOnline) {
+        try {
+          const dbRental = await rentalService.addRental({
+            session_id: sessionId,
+            item_name: rental.item.name,
+            quantity: rental.quantity,
+            rental_charge: totalRental,
+          });
+          rentalId = dbRental.id;
+          await equipmentService.updateAvailableStock(
+            rental.item.id,
+            rental.item.availableStock - rental.quantity
+          );
+          await offlineStorage.saveLocalRental({
+            ...dbRental,
+            _syncStatus: 'synced',
+            _localOnly: false,
+            _lastSyncedAt: now.toISOString(),
+          });
+        } catch {
+          isOfflineRental = true;
+        }
+      } else {
+        isOfflineRental = true;
+      }
+
+      if (isOfflineRental) {
+        await offlineStorage.saveLocalRental({
+          id: rentalId,
+          session_id: sessionId,
+          item_name: rental.item.name,
+          quantity: rental.quantity,
+          returned_quantity: 0,
+          rental_charge: totalRental,
+          created_at: now.toISOString(),
+          _syncStatus: 'pending',
+          _localOnly: true,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'rental',
+          entityId: rentalId,
+          operation: 'insert',
+          payload: {
+            id: rentalId,
+            session_id: sessionId,
+            item_name: rental.item.name,
+            quantity: rental.quantity,
+            rental_charge: totalRental,
+          },
+          dependencyId: sessionId,
+        });
+      }
 
       sessionRentals.push({
-        id: dbRental.id,
+        id: rentalId,
         sessionId,
         customerId: cust.id,
         customerName: cust.name,
@@ -628,15 +867,65 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     const sessionPayments: PaymentRecord[] = [];
     if (paidAmount > 0) {
-      const dbPayment = await paymentService.addPayment({
+      let paymentId = crypto.randomUUID ? crypto.randomUUID() : `pay-${Date.now()}`;
+      let isOfflinePay = false;
+
+      const paymentPayload = {
         session_id: sessionId,
         amount: paidAmount,
         payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
         notes: data.paymentRef || 'Check-in admission payment',
-      });
+      };
+
+      if (!isOfflineSession && isOnline) {
+        try {
+          const dbPayment = await paymentService.addPayment(paymentPayload);
+          paymentId = dbPayment.id;
+          await offlineStorage.saveLocalPayment({
+            ...dbPayment,
+            _syncStatus: 'synced',
+            _localOnly: false,
+            _lastSyncedAt: now.toISOString(),
+          });
+        } catch {
+          isOfflinePay = true;
+        }
+      } else {
+        isOfflinePay = true;
+      }
+
+      if (isOfflinePay) {
+        await offlineStorage.saveLocalPayment({
+          id: paymentId,
+          session_id: sessionId,
+          amount: paidAmount,
+          payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
+          transaction_type: 'payment',
+          payment_date: now.toISOString(),
+          notes: data.paymentRef || 'Check-in admission payment',
+          created_at: now.toISOString(),
+          _syncStatus: 'pending',
+          _localOnly: true,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'payment',
+          entityId: paymentId,
+          operation: 'insert',
+          payload: {
+            id: paymentId,
+            session_id: sessionId,
+            amount: paidAmount,
+            payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
+            notes: data.paymentRef || 'Check-in admission payment',
+            payment_date: now.toISOString(),
+          },
+          dependencyId: sessionId,
+        });
+      }
 
       const newPayment: PaymentRecord = {
-        id: dbPayment.id,
+        id: paymentId,
         sessionId,
         customerId: cust.id,
         customerName: cust.name,
@@ -708,9 +997,10 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const pkg = get().packages.find((p) => p.id === data.packageId);
     const duration = data.customDuration || pkg?.durationMinutes || 60;
     const scheduledExit = new Date(now.getTime() + duration * 60000).toISOString();
-    const groupCode = `GRP-${crypto.randomUUID()}`;
+    const groupCode = `GRP-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
     const groupName = data.leaderName;
     const equipment = get().equipment;
+
     const selectedRentals = (data.rentals || []).map((rental) => {
       const item = equipment.find((candidate) => candidate.id === rental.equipmentId);
       if (!item) {
@@ -733,6 +1023,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         item,
       };
     });
+
     const rentalCharge = selectedRentals.reduce(
       (total, rental) => total + rental.pricePerItem * rental.quantity,
       0
@@ -744,7 +1035,11 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       notes: `Group Leader: ${groupName}`,
     });
 
-    const leaderDbSession = await sessionService.createSession({
+    const isOnline = isSupabaseConfigured && connectivity.isOnline();
+    let sessionId = crypto.randomUUID ? crypto.randomUUID() : `grp-sess-${Date.now()}`;
+    let isOfflineGroup = false;
+
+    const sessionPayload = {
       customer_id: leaderCust.id,
       group_code: groupCode,
       group_name: groupName,
@@ -754,25 +1049,114 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       duration_minutes: duration,
       session_amount: data.totalPrice,
       costume_used: selectedRentals.length > 0,
-      status: 'active',
-    });
+      status: 'active' as const,
+    };
+
+    if (isOnline) {
+      try {
+        const leaderDbSession = await sessionService.createSession(sessionPayload);
+        sessionId = leaderDbSession.id;
+        await offlineStorage.saveLocalSession({
+          ...leaderDbSession,
+          _syncStatus: 'synced',
+          _localOnly: false,
+          _lastSyncedAt: now.toISOString(),
+        });
+      } catch (err: any) {
+        console.warn('[createGroupSession] Online save failed, queuing offline:', err.message);
+        isOfflineGroup = true;
+      }
+    } else {
+      isOfflineGroup = true;
+    }
+
+    if (isOfflineGroup) {
+      await offlineStorage.saveLocalSession({
+        id: sessionId,
+        ...sessionPayload,
+        actual_exit_time: null,
+        actual_duration_minutes: null,
+        created_at: now.toISOString(),
+        _syncStatus: 'pending',
+        _localOnly: true,
+      });
+
+      await syncQueue.enqueue({
+        entityType: 'session',
+        entityId: sessionId,
+        operation: 'insert',
+        payload: {
+          id: sessionId,
+          ...sessionPayload,
+        },
+        dependencyId: leaderCust.id,
+      });
+      toast.info('Group pass recorded offline. Will sync when online.');
+    }
 
     const groupRentals: RentalItem[] = [];
     for (const rental of selectedRentals) {
       const totalRentalAmount = rental.pricePerItem * rental.quantity;
-      const dbRental = await rentalService.addRental({
-        session_id: leaderDbSession.id,
-        item_name: rental.item.name,
-        quantity: rental.quantity,
-        rental_charge: totalRentalAmount,
-      });
-      await equipmentService.updateAvailableStock(
-        rental.item.id,
-        rental.item.availableStock - rental.quantity
-      );
+      let rentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      let isOfflineRental = false;
+
+      if (!isOfflineGroup && isOnline) {
+        try {
+          const dbRental = await rentalService.addRental({
+            session_id: sessionId,
+            item_name: rental.item.name,
+            quantity: rental.quantity,
+            rental_charge: totalRentalAmount,
+          });
+          rentalId = dbRental.id;
+          await equipmentService.updateAvailableStock(
+            rental.item.id,
+            rental.item.availableStock - rental.quantity
+          );
+          await offlineStorage.saveLocalRental({
+            ...dbRental,
+            _syncStatus: 'synced',
+            _localOnly: false,
+            _lastSyncedAt: now.toISOString(),
+          });
+        } catch {
+          isOfflineRental = true;
+        }
+      } else {
+        isOfflineRental = true;
+      }
+
+      if (isOfflineRental) {
+        await offlineStorage.saveLocalRental({
+          id: rentalId,
+          session_id: sessionId,
+          item_name: rental.item.name,
+          quantity: rental.quantity,
+          returned_quantity: 0,
+          rental_charge: totalRentalAmount,
+          created_at: now.toISOString(),
+          _syncStatus: 'pending',
+          _localOnly: true,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'rental',
+          entityId: rentalId,
+          operation: 'insert',
+          payload: {
+            id: rentalId,
+            session_id: sessionId,
+            item_name: rental.item.name,
+            quantity: rental.quantity,
+            rental_charge: totalRentalAmount,
+          },
+          dependencyId: sessionId,
+        });
+      }
+
       groupRentals.push({
-        id: dbRental.id,
-        sessionId: leaderDbSession.id,
+        id: rentalId,
+        sessionId,
         customerId: leaderCust.id,
         customerName: data.leaderName,
         equipmentId: rental.item.id,
@@ -790,16 +1174,63 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     const sessionPayments: PaymentRecord[] = [];
     if (data.initialPayment > 0) {
-      const dbPayment = await paymentService.addPayment({
-        session_id: leaderDbSession.id,
+      let paymentId = crypto.randomUUID ? crypto.randomUUID() : `pay-${Date.now()}`;
+      let isOfflinePay = false;
+
+      const paymentPayload = {
+        session_id: sessionId,
         amount: data.initialPayment,
         payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
         notes: `Group Pass led by ${groupName} (${data.memberCount} members)`,
-      });
+      };
+
+      if (!isOfflineGroup && isOnline) {
+        try {
+          const dbPayment = await paymentService.addPayment(paymentPayload);
+          paymentId = dbPayment.id;
+          await offlineStorage.saveLocalPayment({
+            ...dbPayment,
+            _syncStatus: 'synced',
+            _localOnly: false,
+            _lastSyncedAt: now.toISOString(),
+          });
+        } catch {
+          isOfflinePay = true;
+        }
+      } else {
+        isOfflinePay = true;
+      }
+
+      if (isOfflinePay) {
+        await offlineStorage.saveLocalPayment({
+          id: paymentId,
+          session_id: sessionId,
+          amount: data.initialPayment,
+          payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
+          transaction_type: 'payment',
+          payment_date: now.toISOString(),
+          notes: paymentPayload.notes,
+          created_at: now.toISOString(),
+          _syncStatus: 'pending',
+          _localOnly: true,
+        });
+
+        await syncQueue.enqueue({
+          entityType: 'payment',
+          entityId: paymentId,
+          operation: 'insert',
+          payload: {
+            id: paymentId,
+            ...paymentPayload,
+            payment_date: now.toISOString(),
+          },
+          dependencyId: sessionId,
+        });
+      }
 
       const newPayment: PaymentRecord = {
-        id: dbPayment.id,
-        sessionId: leaderDbSession.id,
+        id: paymentId,
+        sessionId,
         customerId: leaderCust.id,
         customerName: data.leaderName,
         amount: data.initialPayment,
@@ -817,7 +1248,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const outstanding = Math.max(0, totalCharges - paidAmount);
 
     const primaryGroupSession: Session = {
-      id: leaderDbSession.id,
+      id: sessionId,
       type: 'group',
       customerId: leaderCust.id,
       customerName: data.leaderName,
@@ -881,11 +1312,32 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const newDuration = session.durationMinutes + minutesToAdd;
     const newTotal = session.totalCharges + charge;
 
-    await sessionService.updateSession(sessionId, {
+    const updatePayload = {
       scheduled_exit_time: newExitTime,
       duration_minutes: newDuration,
       session_amount: newTotal - session.rentalCharges,
-    });
+    };
+
+    if (isValidUuid(sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await sessionService.updateSession(sessionId, updatePayload);
+      } catch (err: any) {
+        console.warn('Online session extend failed, queuing offline:', err.message);
+        await syncQueue.enqueue({
+          entityType: 'session',
+          entityId: sessionId,
+          operation: 'update',
+          payload: updatePayload,
+        });
+      }
+    } else {
+      await syncQueue.enqueue({
+        entityType: 'session',
+        entityId: sessionId,
+        operation: 'update',
+        payload: updatePayload,
+      });
+    }
 
     const newExtension = {
       id: `EXT-${Date.now().toString().slice(-5)}`,
@@ -917,8 +1369,30 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
   completeSession: async (sessionId) => {
     const now = new Date().toISOString();
-    if (isValidUuid(sessionId) && isSupabaseConfigured) {
-      await sessionService.completeSession(sessionId, now);
+    const updatePayload = {
+      status: 'completed' as const,
+      actual_exit_time: now,
+    };
+
+    if (isValidUuid(sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await sessionService.completeSession(sessionId, now);
+      } catch (err: any) {
+        console.warn('Online completeSession failed, queuing offline:', err.message);
+        await syncQueue.enqueue({
+          entityType: 'session',
+          entityId: sessionId,
+          operation: 'update',
+          payload: updatePayload,
+        });
+      }
+    } else {
+      await syncQueue.enqueue({
+        entityType: 'session',
+        entityId: sessionId,
+        operation: 'update',
+        payload: updatePayload,
+      });
     }
 
     set((state) => ({
@@ -948,20 +1422,16 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }
 
     // 2. Mark session as completed
-    if (isValidUuid(sessionId) && isSupabaseConfigured) {
-      await sessionService.completeSession(sessionId, now);
-    }
-
-    set((state) => ({
-      sessions: state.sessions.map((s) =>
-        s.id === sessionId ? { ...s, status: 'completed', actualExitTime: now } : s
-      ),
-    }));
+    await get().completeSession(sessionId);
   },
 
   cancelSession: async (sessionId) => {
-    if (isValidUuid(sessionId) && isSupabaseConfigured) {
-      await sessionService.updateSession(sessionId, { status: 'completed' });
+    if (isValidUuid(sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await sessionService.updateSession(sessionId, { status: 'completed' });
+      } catch {
+        // queue offline update
+      }
     }
     set((state) => ({
       sessions: state.sessions.map((s) =>
@@ -979,34 +1449,23 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         : [];
 
     if (isSupabaseConfigured) {
-      if (session?.groupCode) {
-        await sessionService.deleteSessionsByGroupCode(session.groupCode);
-      } else if (isValidUuid(sessionId)) {
-        await sessionService.deleteSession(sessionId);
-      }
-    }
-
-    if (isSupabaseConfigured) {
-      const stockToRestore = new Map<string, number>();
-      sessionsToRemove.forEach((sessionToRemove) => {
-        sessionToRemove.rentals.forEach((rental) => {
-          const unreturned = rental.quantity - rental.returnedQuantity;
-          if (unreturned > 0) {
-            stockToRestore.set(
-              rental.equipmentId,
-              (stockToRestore.get(rental.equipmentId) || 0) + unreturned
-            );
+      if (connectivity.isOnline()) {
+        try {
+          if (session?.groupCode) {
+            await sessionService.deleteSessionsByGroupCode(session.groupCode);
+          } else if (isValidUuid(sessionId)) {
+            await sessionService.deleteSession(sessionId);
           }
-        });
-      });
-      for (const [equipmentId, quantity] of stockToRestore) {
-        const equipment = get().equipment.find((item) => item.id === equipmentId);
-        if (equipment) {
-          await equipmentService.updateAvailableStock(
-            equipmentId,
-            Math.min(equipment.totalStock, equipment.availableStock + quantity)
-          );
+        } catch {
+          // ignore
         }
+      } else {
+        await syncQueue.enqueue({
+          entityType: 'session',
+          entityId: sessionId,
+          operation: 'delete',
+          payload: {},
+        });
       }
     }
 
@@ -1049,15 +1508,64 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       if (sess) targetCustName = sess.customerName;
     }
 
-    const dbPayment = await paymentService.addPayment({
+    let paymentId = crypto.randomUUID ? crypto.randomUUID() : `pay-${Date.now()}`;
+    let isOffline = false;
+
+    const paymentPayload = {
       session_id: data.sessionId,
       amount: data.amount,
       payment_method: mapFrontendPaymentMethod(data.method),
       notes: data.notes || data.referenceNumber,
-    });
+    };
+
+    if (isValidUuid(data.sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        const dbPayment = await paymentService.addPayment(paymentPayload);
+        paymentId = dbPayment.id;
+        await offlineStorage.saveLocalPayment({
+          ...dbPayment,
+          _syncStatus: 'synced',
+          _localOnly: false,
+          _lastSyncedAt: now.toISOString(),
+        });
+      } catch (err: any) {
+        console.warn('Online payment record failed, saving offline:', err.message);
+        isOffline = true;
+      }
+    } else {
+      isOffline = true;
+    }
+
+    if (isOffline) {
+      await offlineStorage.saveLocalPayment({
+        id: paymentId,
+        session_id: data.sessionId,
+        amount: data.amount,
+        payment_method: mapFrontendPaymentMethod(data.method),
+        transaction_type: 'payment',
+        payment_date: now.toISOString(),
+        notes: data.notes || data.referenceNumber || null,
+        created_at: now.toISOString(),
+        _syncStatus: 'pending',
+        _localOnly: true,
+      });
+
+      await syncQueue.enqueue({
+        entityType: 'payment',
+        entityId: paymentId,
+        operation: 'insert',
+        payload: {
+          id: paymentId,
+          ...paymentPayload,
+          payment_date: now.toISOString(),
+        },
+        dependencyId: data.sessionId,
+      });
+      toast.info('Payment recorded locally. Will sync with Supabase when online.');
+    }
 
     const newPayment: PaymentRecord = {
-      id: dbPayment.id,
+      id: paymentId,
       sessionId: data.sessionId,
       customerId: data.customerId || '',
       customerName: targetCustName,
@@ -1096,10 +1604,19 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
   deletePayment: async (paymentId) => {
     if (isValidUuid(paymentId) && isSupabaseConfigured) {
-      try {
-        await paymentService.deletePayment(paymentId);
-      } catch (err: any) {
-        console.warn('Could not delete payment from Supabase (proceeding with local update):', err?.message);
+      if (connectivity.isOnline()) {
+        try {
+          await paymentService.deletePayment(paymentId);
+        } catch (err: any) {
+          console.warn('Could not delete payment from Supabase:', err?.message);
+        }
+      } else {
+        await syncQueue.enqueue({
+          entityType: 'payment',
+          entityId: paymentId,
+          operation: 'delete',
+          payload: {},
+        });
       }
     }
 
@@ -1144,19 +1661,43 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }
     const totalAmount = data.pricePerItem * data.quantity;
 
-    let dbRentalId = `rnt-${Date.now()}`;
-    if (data.sessionId && isValidUuid(data.sessionId) && isSupabaseConfigured) {
-      const dbRental = await rentalService.addRental({
-        session_id: data.sessionId,
-        item_name: eq?.name || data.equipmentId,
-        quantity: data.quantity,
-        rental_charge: totalAmount,
+    let dbRentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}`;
+    let isOfflineRental = false;
+
+    if (data.sessionId && isValidUuid(data.sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        const dbRental = await rentalService.addRental({
+          session_id: data.sessionId,
+          item_name: eq?.name || data.equipmentId,
+          quantity: data.quantity,
+          rental_charge: totalAmount,
+        });
+        dbRentalId = dbRental.id;
+        await equipmentService.updateAvailableStock(
+          eq.id,
+          eq.availableStock - data.quantity
+        );
+      } catch {
+        isOfflineRental = true;
+      }
+    } else {
+      isOfflineRental = true;
+    }
+
+    if (isOfflineRental && data.sessionId) {
+      await syncQueue.enqueue({
+        entityType: 'rental',
+        entityId: dbRentalId,
+        operation: 'insert',
+        payload: {
+          id: dbRentalId,
+          session_id: data.sessionId,
+          item_name: eq?.name || data.equipmentId,
+          quantity: data.quantity,
+          rental_charge: totalAmount,
+        },
+        dependencyId: data.sessionId,
       });
-      dbRentalId = dbRental.id;
-      await equipmentService.updateAvailableStock(
-        eq.id,
-        eq.availableStock - data.quantity
-      );
     }
 
     const newRental: RentalItem = {
@@ -1219,15 +1760,33 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     if (!currentRental) return;
 
     const newReturnedQty = currentRental.returnedQuantity + returnedQty;
-    if (isValidUuid(rentalId) && isSupabaseConfigured) {
-      await rentalService.updateRentalReturn(rentalId, newReturnedQty);
-      const equipment = get().equipment.find((item) => item.id === currentRental.equipmentId);
-      if (equipment) {
-        await equipmentService.updateAvailableStock(
-          equipment.id,
-          Math.min(equipment.totalStock, equipment.availableStock + returnedQty)
-        );
+
+    if (isValidUuid(rentalId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await rentalService.updateRentalReturn(rentalId, newReturnedQty);
+        const equipment = get().equipment.find((item) => item.id === currentRental.equipmentId);
+        if (equipment) {
+          await equipmentService.updateAvailableStock(
+            equipment.id,
+            Math.min(equipment.totalStock, equipment.availableStock + returnedQty)
+          );
+        }
+      } catch (err: any) {
+        console.warn('Online processReturn failed, queuing offline:', err.message);
+        await syncQueue.enqueue({
+          entityType: 'rental',
+          entityId: rentalId,
+          operation: 'update',
+          payload: { returned_quantity: newReturnedQty },
+        });
       }
+    } else {
+      await syncQueue.enqueue({
+        entityType: 'rental',
+        entityId: rentalId,
+        operation: 'update',
+        payload: { returned_quantity: newReturnedQty },
+      });
     }
 
     set((state) => {
@@ -1275,34 +1834,37 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   deleteRental: async (rentalId) => {
     const rental = get().rentals.find((item) => item.id === rentalId);
     if (isValidUuid(rentalId) && isSupabaseConfigured) {
-      await rentalService.deleteRental(rentalId);
-      if (rental) {
-        const equipment = get().equipment.find((item) => item.id === rental.equipmentId);
-        const unreturned = rental.quantity - rental.returnedQuantity;
-        if (equipment && unreturned > 0) {
-          await equipmentService.updateAvailableStock(
-            equipment.id,
-            Math.min(equipment.totalStock, equipment.availableStock + unreturned)
-          );
+      if (connectivity.isOnline()) {
+        try {
+          await rentalService.deleteRental(rentalId);
+        } catch {
+          // ignore
         }
+      } else {
+        await syncQueue.enqueue({
+          entityType: 'rental',
+          entityId: rentalId,
+          operation: 'delete',
+          payload: {},
+        });
       }
     }
 
     set((state) => {
-      const rental = state.rentals.find((r) => r.id === rentalId);
-      if (!rental) return state;
+      const rentalItem = state.rentals.find((r) => r.id === rentalId);
+      if (!rentalItem) return state;
 
-      const unreturned = rental.quantity - rental.returnedQuantity;
+      const unreturned = rentalItem.quantity - rentalItem.returnedQuantity;
       const updatedEquipment = state.equipment.map((e) =>
-        e.id === rental.equipmentId && unreturned > 0
+        e.id === rentalItem.equipmentId && unreturned > 0
           ? { ...e, availableStock: Math.min(e.totalStock, e.availableStock + unreturned) }
           : e
       );
 
       const updatedSessions = state.sessions.map((s) => {
-        if (s.id === rental.sessionId) {
-          const newRentalCharges = Math.max(0, s.rentalCharges - rental.totalRentalAmount);
-          const newTotal = Math.max(0, s.totalCharges - rental.totalRentalAmount);
+        if (s.id === rentalItem.sessionId) {
+          const newRentalCharges = Math.max(0, s.rentalCharges - rentalItem.totalRentalAmount);
+          const newTotal = Math.max(0, s.totalCharges - rentalItem.totalRentalAmount);
           const newOutstanding = Math.max(0, newTotal - s.paidAmount);
           return {
             ...s,
@@ -1367,11 +1929,33 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     const equipment = get().equipment.find((item) => item.id === id);
     if (!equipment) throw new Error('Equipment item was not found.');
-    await equipmentService.save({ ...equipment, ...updates, name: updates.name.trim() });
+
+    const cleanEquipment = { ...equipment, ...updates, name: updates.name.trim() };
+
+    if (isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await equipmentService.save(cleanEquipment);
+      } catch (err: any) {
+        console.warn('Online equipment save failed, queuing offline:', err.message);
+        await syncQueue.enqueue({
+          entityType: 'equipment',
+          entityId: id,
+          operation: 'update',
+          payload: toDbRentalEquipment(cleanEquipment),
+        });
+      }
+    } else {
+      await syncQueue.enqueue({
+        entityType: 'equipment',
+        entityId: id,
+        operation: 'update',
+        payload: toDbRentalEquipment(cleanEquipment),
+      });
+    }
 
     set((state) => ({
       equipment: state.equipment.map((item) =>
-        item.id === id ? { ...item, ...updates, name: updates.name.trim() } : item
+        item.id === id ? cleanEquipment : item
       ),
     }));
   },

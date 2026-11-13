@@ -9,6 +9,9 @@ import { usePoolStore } from '../../store/usePoolStore';
 import { authService } from '../../services/authService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { StaffAuthScreen } from '../common/StaffAuthScreen';
+import { OfflineBanner } from '../pwa/OfflineBanner';
+import { InstallPromptModal } from '../pwa/InstallPromptModal';
+import { UpdatePromptModal } from '../pwa/UpdatePromptModal';
 
 // Global Modals
 import { IndividualEntryModal } from '../sessions/IndividualEntryModal';
@@ -26,6 +29,7 @@ import { CheckoutModal } from '../sessions/CheckoutModal';
 export const Layout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const initializeOfflineData = usePoolStore((state) => state.initializeOfflineData);
   const fetchAllData = usePoolStore((state) => state.fetchAllData);
   const currentUser = usePoolStore((state) => state.currentUser);
   const setCurrentUser = usePoolStore((state) => state.setCurrentUser);
@@ -36,6 +40,9 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     let isMounted = true;
+
+    // Immediately hydrate from local IndexedDB first for instant rendering
+    initializeOfflineData();
 
     // Check existing staff auth session in Supabase persistent storage
     authService
@@ -69,7 +76,7 @@ export const Layout: React.FC = () => {
       isMounted = false;
       authListener?.subscription?.unsubscribe();
     };
-  }, [fetchAllData, setCurrentUser]);
+  }, [initializeOfflineData, fetchAllData, setCurrentUser]);
 
   // Brief loading screen while verifying staff session
   if (isCheckingAuth) {
@@ -95,12 +102,12 @@ export const Layout: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 pb-16 lg:pb-0">
+        <OfflineBanner />
         <Header onOpenMobileMenu={() => setMobileMenuOpen(true)} />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
           <Outlet />
         </main>
-
       </div>
 
       <button
@@ -126,6 +133,10 @@ export const Layout: React.FC = () => {
       <ReceiptModal />
       <StaffLoginModal />
       <CheckoutModal />
+
+      {/* PWA Prompts */}
+      <InstallPromptModal />
+      <UpdatePromptModal />
     </div>
   );
 };

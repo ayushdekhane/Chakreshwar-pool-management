@@ -17,7 +17,9 @@ import {
   Receipt,
   Banknote,
   Smartphone,
+  WifiOff,
 } from 'lucide-react';
+import { usePwa } from '../hooks/usePwa';
 import {
   AreaChart,
   Area,
@@ -46,6 +48,7 @@ import {
 import { toast } from 'sonner';
 
 export const Reports: React.FC = () => {
+  const { isOnline } = usePwa();
   const sessions = usePoolStore((state) => state.sessions);
   const payments = usePoolStore((state) => state.payments);
 
@@ -287,6 +290,16 @@ export const Reports: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Offline Data Limitation Warning Banner */}
+      {!isOnline && (
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 shadow-xs">
+          <WifiOff className="w-4 h-4 text-amber-600 flex-shrink-0" />
+          <span>
+            <strong>Offline Local Report:</strong> Showing metrics calculated from records stored on this device. Complete cloud-wide totals and multi-device reconciliations will be available once connected to the internet.
+          </span>
+        </div>
+      )}
 
       {/* Two Main Tabs: Daily Report vs Monthly Report */}
       <div className="flex items-center justify-between border-b border-[#E2E8F0]">

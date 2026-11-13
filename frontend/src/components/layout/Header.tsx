@@ -26,6 +26,7 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '../../services/authService';
 import { isSupabaseConfigured } from '../../lib/supabase';
 import { toast } from 'sonner';
+import { NetworkStatusBadge } from '../pwa/NetworkStatusBadge';
 
 interface HeaderProps {
   onOpenMobileMenu: () => void;
@@ -96,6 +97,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
             </span>
           </div>
         </div>
+
+        {/* PWA Network & Cloud Sync Status Badge */}
+        <NetworkStatusBadge />
 
         {/* Quick Action Buttons */}
         <div className="hidden md:flex items-center gap-1.5">

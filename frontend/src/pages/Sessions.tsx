@@ -311,7 +311,17 @@ export const Sessions: React.FC = () => {
                       >
                         {/* ID */}
                         <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
-                          {session.id}
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate max-w-[120px]">{session.id}</span>
+                            {(session.id.startsWith('sess-') || session.id.startsWith('grp-sess-')) && (
+                              <span
+                                className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200"
+                                title="Created offline. Waiting to synchronize with Supabase."
+                              >
+                                Pending Sync
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-400 font-sans font-normal">
                             {formatDate(session.entryTime)}
                           </div>

@@ -28,6 +28,7 @@ import { formatCurrency, cn } from '../utils';
 import { toast } from 'sonner';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { authService } from '../services/authService';
+import { OfflineStorageSettings } from '../components/settings/OfflineStorageSettings';
 
 export const Settings: React.FC = () => {
   const settings = usePoolStore((state) => state.settings);
@@ -844,6 +845,9 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Local Offline Database (IndexedDB) & PWA Storage */}
+            <OfflineStorageSettings />
 
             {/* In-Memory / Demonstration Controls */}
             <div>

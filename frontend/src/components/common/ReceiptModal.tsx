@@ -37,8 +37,8 @@ export const ReceiptModal: React.FC = () => {
           {/* Header */}
           <div className="text-center pb-3 border-b-2 border-dashed border-slate-300">
             <div className="flex items-center justify-center gap-1.5 text-base font-extrabold text-[#087FA5]">
-              <Waves className="w-5 h-5 text-[#087FA5]" />
-              <span>SERENITY SPORTS CLUB</span>
+              <Waves className="pw-5 h-5 text-[#087FA5]" />
+              <span>CHAKRESHWAR POOL</span>
             </div>
             <p className="text-[10px] text-slate-500 mt-0.5">{settings.address}</p>
             <p className="text-[10px] text-slate-500">Phone: {settings.phone} · GSTIN: {settings.gstNumber}</p>

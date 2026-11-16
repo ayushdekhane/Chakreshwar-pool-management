@@ -19,9 +19,9 @@ export default defineConfig({
         'images/serenity-logo.svg',
       ],
       manifest: {
-        name: 'Serenity Sports Club',
-        short_name: 'Serenity',
-        description: 'Swimming Pool Operations and Management System.',
+        name: 'Chakreshwar Pool Dashboard',
+        short_name: 'Chakreshwar Pool Dashboard',
+        description: 'Swimming Pool Operations and Management System for Chakreshwar Pool.',
         theme_color: '#087FA5',
         background_color: '#F4F7F9',
         display: 'standalone',

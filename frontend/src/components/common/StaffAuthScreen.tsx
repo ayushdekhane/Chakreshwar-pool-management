@@ -124,7 +124,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
             <Waves className="w-8 h-8 text-white animate-pulse" />
           </div>
           <h1 className="text-2xl font-black text-[#171717] tracking-tight">
-            SERENITY <span className="text-[#087FA5]">SPORTS CLUB</span>
+CHAKRESHWAR <span className="text-[#087FA5]">POOL</span>
           </h1>
           <p className="text-xs font-semibold text-[#64748B] tracking-wider uppercase mt-0.5">
             {/* Swimming Pool Management System · Staff Portal */}
@@ -240,7 +240,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. desk1@serenitysports.com"
+                  placeholder="e.g. desk1@chakreshwarpool.com"
                   autoComplete="email"
                   required
                   className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#087FA5] focus:border-transparent transition-all font-medium"

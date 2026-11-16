@@ -25,7 +25,7 @@ export const InstallPromptModal: React.FC = () => {
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-900 leading-snug">
-              Install Serenity Sports Club
+              Install Chakreshwar Pool Dashboard
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
               Get quick access to pool operations directly from your device.

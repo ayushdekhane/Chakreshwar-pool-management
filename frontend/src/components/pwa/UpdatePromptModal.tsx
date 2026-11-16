@@ -21,7 +21,7 @@ export const UpdatePromptModal: React.FC = () => {
               New version available
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Update Serenity Sports Club to get the latest improvements.
+              Update Chakreshwar pool  to get the latest improvements.
             </p>
           </div>
         </div>

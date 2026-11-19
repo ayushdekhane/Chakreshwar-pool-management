@@ -7,7 +7,7 @@ import { MobileNav } from './MobileNav';
 import { useGlobalTimer } from '../../hooks/useTimer';
 import { usePoolStore } from '../../store/usePoolStore';
 import { authService } from '../../services/authService';
-import { isSupabaseConfigured } from '../../lib/supabase';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase';
 import { StaffAuthScreen } from '../common/StaffAuthScreen';
 import { OfflineBanner } from '../pwa/OfflineBanner';
 import { InstallPromptModal } from '../pwa/InstallPromptModal';
@@ -81,6 +81,57 @@ export const Layout: React.FC = () => {
       authListener?.subscription?.unsubscribe();
     };
   }, [initializeOfflineData, fetchAllData, setCurrentUser]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !currentUser) return;
+
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const queueRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        fetchAllData();
+      }, 250);
+    };
+
+    const realtimeChannel = supabase
+      .channel('staff-live-data')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'equipment' },
+        queueRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sessions' },
+        queueRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'costume_rentals' },
+        queueRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payments' },
+        queueRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'customers' },
+        queueRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'app_settings' },
+        queueRefresh
+      )
+      .subscribe();
+
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(realtimeChannel);
+    };
+  }, [currentUser, fetchAllData]);
 
   // Brief loading screen while verifying staff session
   if (isCheckingAuth) {

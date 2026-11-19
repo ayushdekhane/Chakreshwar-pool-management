@@ -6,6 +6,7 @@ export interface DbCustomer {
 }
 
 export type DbSessionStatus = 'active' | 'expired' | 'completed';
+export type DbEquipmentType = 'rental' | 'sale';
 
 export interface DbSession {
   id: string;
@@ -22,6 +23,10 @@ export interface DbSession {
   actual_duration_minutes: number | null;
   session_amount: number;
   costume_used: boolean;
+  penalty_charge?: number;
+  penalty_applied?: boolean;
+  penalty_minutes?: number;
+  penalty_intervals?: number;
   status: DbSessionStatus;
   created_at: string;
   // Joins
@@ -49,8 +54,12 @@ export interface DbPayment {
 
 export interface DbCostumeRental {
   id: string;
-  session_id: string;
+  session_id: string | null;
+  equipment_id?: string | null;
   item_name: string;
+  customer_name?: string | null;
+  size?: string | null;
+  equipment_type?: DbEquipmentType;
   quantity: number;
   returned_quantity: number;
   rental_charge: number;
@@ -59,14 +68,22 @@ export interface DbCostumeRental {
   sessions?: DbSession;
 }
 
-export interface DbRentalEquipment {
+export interface DbEquipment {
   id: string;
   name: string;
-  category: string;
+  equipment_type: DbEquipmentType;
+  available_for_sale: boolean;
+  sale_rate: number;
   sizes: string[];
   default_rate: number;
   default_deposit: number;
   total_stock: number;
   available_stock: number;
+  updated_at: string;
+}
+
+export interface DbAppSettings {
+  id: string;
+  settings: unknown;
   updated_at: string;
 }

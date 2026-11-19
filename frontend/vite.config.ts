@@ -16,7 +16,7 @@ export default defineConfig({
         'icons/icon-maskable-512x512.png',
         'icons/apple-touch-icon-180x180.png',
         'icons/favicon-64x64.png',
-        'images/serenity-logo.svg',
+        'images/chakreshwar-logo.svg',
       ],
       manifest: {
         name: 'Chakreshwar Pool Dashboard',

@@ -15,6 +15,14 @@ export const ReceiptModal: React.FC = () => {
   const receiptRef = useRef<HTMLDivElement>(null);
 
   if (!session) return null;
+  const overtimeMinutes = session.penaltyMinutes ??
+    Math.max(
+      0,
+      Math.floor(
+        (new Date(session.actualExitTime || Date.now()).getTime()
+          - new Date(session.scheduledExitTime).getTime()) / 60000
+      )
+    );
 
   const handlePrint = () => {
     window.print();
@@ -25,7 +33,7 @@ export const ReceiptModal: React.FC = () => {
       isOpen={activeModal === 'receipt_modal'}
       onClose={closeModal}
       title="Official Pool Admission Receipt"
-      subtitle="Serenity Sports Club · Guest Tax Invoice"
+      subtitle="Chakreshwar Swimming Pool · Guest Tax Invoice"
       maxWidth="md"
     >
       <div className="space-y-4">
@@ -96,9 +104,18 @@ export const ReceiptModal: React.FC = () => {
               </div>
             )}
 
+            {session.penaltyApplied && (session.penaltyCharges || 0) > 0 && (
+              <div className="flex justify-between text-amber-700">
+                <span>
+                  Overtime Penalty ({session.penaltyIntervals || 0} intervals · {overtimeMinutes}m extra)
+                </span>
+                <span>{formatCurrency(session.penaltyCharges || 0)}</span>
+              </div>
+            )}
+
             {session.rentals.map((r) => (
               <div key={r.id} className="flex justify-between text-slate-600">
-                <span>Rental: {r.equipmentName} ({r.quantity}x)</span>
+                <span>{r.equipmentType === 'sale' ? 'Sale' : 'Rental'}: {r.equipmentName} ({r.quantity}x)</span>
                 <span>{formatCurrency(r.totalRentalAmount)}</span>
               </div>
             ))}
@@ -124,9 +141,9 @@ export const ReceiptModal: React.FC = () => {
 
           {/* Footer note */}
           <div className="text-center pt-3 border-t border-dashed border-slate-200 text-[10px] text-slate-500 space-y-1">
-            <p>Thank you for choosing Serenity Sports Club!</p>
+            <p>Thank you for choosing Chakreshwar Swimming Pool!</p>
             <p>Please return all rental gear and locker keys before leaving.</p>
-            <p className="font-sans text-[9px] text-slate-400">Generated via Serenity Swimming Desk OS</p>
+            <p className="font-sans text-[9px] text-slate-400">Generated via Chakreshwar Swimming Desk OS</p>
           </div>
         </div>
 

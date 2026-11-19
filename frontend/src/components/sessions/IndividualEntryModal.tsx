@@ -21,7 +21,15 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
-type SelectedAccessory = { quantity: number; size: string };
+type SelectedAccessory = {
+  equipmentId: string;
+  transactionType: 'rental' | 'sale';
+  quantity: number;
+  size?: string;
+};
+
+const getAccessoryKey = (equipmentId: string, type: 'rental' | 'sale') =>
+  `${equipmentId}:${type}`;
 
 export const IndividualEntryModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -31,6 +39,7 @@ export const IndividualEntryModal: React.FC = () => {
   const createIndividualSession = usePoolStore((state) => state.createIndividualSession);
 
   const [isCustomPkg, setIsCustomPkg] = useState(false);
+  const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
   const [selectedAccessories, setSelectedAccessories] = useState<
     Record<string, SelectedAccessory>
   >({});
@@ -68,9 +77,12 @@ export const IndividualEntryModal: React.FC = () => {
 
   // Compute bill
   const swimCharge = isCustomPkg ? (watchCustomAmount || 0) : (selectedPkg?.price || 0);
-  const rentalCharge = equipment.reduce((total, item) => {
-    const rental = selectedAccessories[item.id];
-    return total + item.defaultRate * (rental?.quantity || 0);
+  const rentalCharge = Object.values(selectedAccessories).reduce((total, selection) => {
+    const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+    const rate = selection.transactionType === 'sale'
+      ? item?.saleRate ?? item?.defaultRate ?? 0
+      : item?.defaultRate ?? 0;
+    return total + rate * selection.quantity;
   }, 0);
   const totalBill = swimCharge + rentalCharge;
 
@@ -99,25 +111,40 @@ export const IndividualEntryModal: React.FC = () => {
       return;
     }
 
-    const rentalItems = equipment
-      .filter((item) => selectedAccessories[item.id])
-      .map((item) => ({
-        equipmentId: item.id,
-        size: selectedAccessories[item.id].size,
-        quantity: selectedAccessories[item.id].quantity,
-        pricePerItem: item.defaultRate,
-        deposit: item.defaultDeposit * selectedAccessories[item.id].quantity,
-      }));
+    const rentalItems = Object.values(selectedAccessories).map((selection) => {
+      const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+      return {
+        equipmentId: selection.equipmentId,
+        transactionType: selection.transactionType,
+        size: selection.size,
+        quantity: selection.quantity,
+        pricePerItem: selection.transactionType === 'sale'
+          ? item?.saleRate ?? item?.defaultRate ?? 0
+          : item?.defaultRate ?? 0,
+      };
+    });
 
     if (rentalItems.some((rental) => {
       const item = equipment.find((candidate) => candidate.id === rental.equipmentId);
       return (
         !Number.isInteger(rental.quantity) ||
-        rental.quantity < 1 ||
-        rental.quantity > (item?.availableStock || 0)
+        rental.quantity < 1
       );
     })) {
       toast.error('The selected accessory quantity exceeds available stock.');
+      return;
+    }
+
+    const quantityByEquipment = rentalItems.reduce<Record<string, number>>((totals, rental) => {
+      totals[rental.equipmentId] = (totals[rental.equipmentId] || 0) + rental.quantity;
+      return totals;
+    }, {});
+    const exceedsCombinedStock = Object.entries(quantityByEquipment).some(([equipmentId, quantity]) => {
+      const item = equipment.find((candidate) => candidate.id === equipmentId);
+      return quantity > (item?.availableStock || 0);
+    });
+    if (exceedsCombinedStock) {
+      toast.error('The combined rental and sale quantity exceeds available stock.');
       return;
     }
 
@@ -140,6 +167,7 @@ export const IndividualEntryModal: React.FC = () => {
       });
       reset();
       setSelectedAccessories({});
+      setEquipmentType('rental');
       closeModal();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create session. Please check fields.');
@@ -283,19 +311,38 @@ export const IndividualEntryModal: React.FC = () => {
           )}
         </div>
 
-        {/* Equipment Rental Add-on */}
+        {/* Equipment Add-on */}
         <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-              <Shirt className="w-4 h-4 text-[#087FA5]" /> Add Equipment Rentals
+              <Shirt className="w-4 h-4 text-[#087FA5]" /> Add Equipment
             </span>
             <span className="text-xs font-bold text-[#087FA5]">
               +{formatCurrency(rentalCharge)}
             </span>
           </div>
+          <label className="block text-xs font-semibold text-slate-700 mb-2">
+            Equipment type
+            <select
+              value={equipmentType}
+              onChange={(event) => setEquipmentType(event.target.value as 'rental' | 'sale')}
+              className="ml-2 px-2 py-1.5 rounded-lg border border-slate-300 bg-white"
+            >
+              <option value="rental">Rental equipment</option>
+              <option value="sale">Sell equipment</option>
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
-            {equipment.map((item) => {
-              const rental = selectedAccessories[item.id];
+            {equipment
+              .filter((item) =>
+                equipmentType === 'rental'
+                  ? item.equipmentType === 'rental'
+                  : item.equipmentType === 'sale' || item.availableForSale
+              )
+              .sort((left, right) => left.name.localeCompare(right.name))
+              .map((item) => {
+              const accessoryKey = getAccessoryKey(item.id, equipmentType);
+              const rental = selectedAccessories[accessoryKey];
               return (
                 <div
                   key={item.id}
@@ -311,14 +358,16 @@ export const IndividualEntryModal: React.FC = () => {
                           if (event.target.checked) {
                             return {
                               ...current,
-                              [item.id]: {
+                              [accessoryKey]: {
+                                equipmentId: item.id,
+                                transactionType: equipmentType,
                                 quantity: 1,
-                                size: item.sizes[0] || 'Standard',
+                                size: item.sizes[0],
                               },
                             };
                           }
                           const next = { ...current };
-                          delete next[item.id];
+                          delete next[accessoryKey];
                           return next;
                         });
                       }}
@@ -329,7 +378,7 @@ export const IndividualEntryModal: React.FC = () => {
                         {item.name}
                       </span>
                       <span className="block text-[11px] text-slate-500">
-                        Price: {formatCurrency(item.defaultRate)} each · Available stock: {item.availableStock}
+                        {equipmentType === 'rental' ? 'Rental fee' : 'Sale price'}: {formatCurrency(equipmentType === 'sale' ? item.saleRate ?? item.defaultRate : item.defaultRate)} each · Available stock: {item.availableStock}
                       </span>
                     </span>
                   </label>
@@ -342,7 +391,7 @@ export const IndividualEntryModal: React.FC = () => {
                           onChange={(event) =>
                             setSelectedAccessories((current) => ({
                               ...current,
-                              [item.id]: { ...current[item.id], size: event.target.value },
+                              [accessoryKey]: { ...current[accessoryKey], size: event.target.value },
                             }))
                           }
                           className="min-w-0 flex-1 px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
@@ -351,6 +400,12 @@ export const IndividualEntryModal: React.FC = () => {
                             <option key={size} value={size}>{size}</option>
                           ))}
                         </select>
+                      )}
+                      {item.sizes.length === 1 && (
+                        <span className="min-w-0 flex-1 text-xs text-slate-600">{item.sizes[0]}</span>
+                      )}
+                      {item.sizes.length === 0 && (
+                        <span className="min-w-0 flex-1 text-xs text-slate-500">N/A</span>
                       )}
                       <input
                         aria-label={`${item.name} quantity`}
@@ -363,8 +418,8 @@ export const IndividualEntryModal: React.FC = () => {
                           const quantity = Number(event.target.value);
                           setSelectedAccessories((current) => ({
                             ...current,
-                            [item.id]: {
-                              ...current[item.id],
+                            [accessoryKey]: {
+                              ...current[accessoryKey],
                               quantity: Number.isInteger(quantity) && quantity > 0 ? quantity : 1,
                             },
                           }));
@@ -375,7 +430,7 @@ export const IndividualEntryModal: React.FC = () => {
                   )}
                 </div>
               );
-            })}
+              })}
           </div>
         </div>
 
@@ -383,7 +438,7 @@ export const IndividualEntryModal: React.FC = () => {
         <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-300 pb-2 border-b border-slate-800">
             <span>Swimming Charge: {formatCurrency(swimCharge)}</span>
-            {rentalCharge > 0 && <span>Rental: {formatCurrency(rentalCharge)}</span>}
+            {rentalCharge > 0 && <span>Equipment: {formatCurrency(rentalCharge)}</span>}
             <span className="text-sm font-bold text-[#EFB33A]">
               Total Bill: {formatCurrency(totalBill)}
             </span>

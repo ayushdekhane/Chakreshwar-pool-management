@@ -3,7 +3,8 @@ import {
   DbSessionStatus,
   DbPaymentMethod,
   DbTransactionType,
-  DbRentalEquipment,
+  DbEquipment,
+  DbEquipmentType,
 } from '../../types/database';
 
 export type SyncStatus = 'synced' | 'pending' | 'syncing' | 'failed';
@@ -47,17 +48,21 @@ export interface LocalPayment extends LocalSyncMetadata {
 
 export interface LocalCostumeRental extends LocalSyncMetadata {
   id: string;
-  session_id: string;
+  session_id: string | null;
+  equipment_id?: string | null;
   item_name: string;
+  customer_name?: string | null;
+  size?: string | null;
+  equipment_type?: DbEquipmentType;
   quantity: number;
   returned_quantity: number;
   rental_charge: number;
   created_at: string;
 }
 
-export type LocalRentalEquipment = DbRentalEquipment & { _lastSyncedAt?: string };
+export type LocalEquipment = DbEquipment & { _lastSyncedAt?: string };
 
-export type QueueEntityType = 'customer' | 'session' | 'payment' | 'rental' | 'equipment';
+export type QueueEntityType = 'customer' | 'session' | 'payment' | 'rental' | 'equipment' | 'settings';
 export type QueueOperation = 'insert' | 'update' | 'delete';
 
 export interface SyncQueueItem {

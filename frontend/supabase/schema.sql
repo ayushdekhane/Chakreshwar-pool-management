@@ -1,5 +1,5 @@
 -- -- ====================================================================
--- -- SERENITY SPORTS CLUB – SWIMMING POOL MANAGEMENT SYSTEM
+-- -- CHAKRESHWAR SWIMMING POOL – SWIMMING POOL MANAGEMENT SYSTEM
 -- -- Supabase PostgreSQL Database Schema
 -- -- Tables: customers, sessions, payments, costume_rentals
 -- -- ====================================================================
@@ -173,10 +173,10 @@
 
 
 -- ============================================================
--- SERENITY SPORTS CLUB
+-- CHAKRESHWAR SWIMMING POOL
 -- Swimming Pool Management System
 -- Supabase PostgreSQL Schema
--- Six tables: customers, sessions, payments, costume_rentals, rental_equipment, packages
+-- Six tables: customers, sessions, payments, costume_rentals, equipment, packages
 -- ============================================================
 
 -- UUID support
@@ -242,6 +242,10 @@ CREATE TABLE IF NOT EXISTS public.sessions (
     actual_duration_minutes INTEGER,
 
     session_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+    penalty_charge NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (penalty_charge >= 0),
+    penalty_applied BOOLEAN NOT NULL DEFAULT false,
+    penalty_minutes INTEGER NOT NULL DEFAULT 0 CHECK (penalty_minutes >= 0),
+    penalty_intervals INTEGER NOT NULL DEFAULT 0 CHECK (penalty_intervals >= 0),
 
     costume_used BOOLEAN NOT NULL DEFAULT false,
 
@@ -347,10 +351,13 @@ CREATE INDEX IF NOT EXISTS idx_payments_type
 CREATE TABLE IF NOT EXISTS public.costume_rentals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-    session_id UUID NOT NULL
+    session_id UUID
         REFERENCES public.sessions(id) ON DELETE CASCADE,
 
     item_name TEXT NOT NULL,
+    customer_name TEXT,
+    equipment_type TEXT NOT NULL DEFAULT 'rental'
+        CHECK (equipment_type IN ('rental', 'sale')),
 
     quantity INTEGER NOT NULL DEFAULT 1
         CHECK (quantity > 0),
@@ -370,14 +377,17 @@ CREATE INDEX IF NOT EXISTS idx_costume_rentals_created
     ON public.costume_rentals(created_at);
 
 -- ============================================================
--- 5. RENTAL EQUIPMENT SETTINGS
--- Persistent accessory rates and inventory.
+-- 5. EQUIPMENT SETTINGS
+-- Persistent accessory rates, inventory, and rental/sale classification.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS public.rental_equipment (
+CREATE TABLE IF NOT EXISTS public.equipment (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
-    category TEXT NOT NULL,
+    equipment_type TEXT NOT NULL DEFAULT 'rental'
+        CHECK (equipment_type IN ('rental', 'sale')),
+    available_for_sale BOOLEAN NOT NULL DEFAULT false,
+    sale_rate NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (sale_rate >= 0),
     sizes TEXT[] NOT NULL DEFAULT ARRAY['Standard']::TEXT[],
     default_rate NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (default_rate >= 0),
     default_deposit NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (default_deposit >= 0),
@@ -386,6 +396,21 @@ CREATE TABLE IF NOT EXISTS public.rental_equipment (
         CHECK (available_stock >= 0 AND available_stock <= total_stock),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.equipment
+    ADD COLUMN IF NOT EXISTS available_for_sale BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS sale_rate NUMERIC(10, 2) NOT NULL DEFAULT 0;
+
+UPDATE public.equipment
+SET available_for_sale = true,
+    sale_rate = CASE WHEN sale_rate = 0 THEN default_rate ELSE sale_rate END
+WHERE equipment_type = 'sale';
+
+ALTER TABLE public.costume_rentals
+    ADD COLUMN IF NOT EXISTS equipment_id TEXT
+        REFERENCES public.equipment(id) ON DELETE SET NULL,
+    ADD COLUMN IF NOT EXISTS customer_name TEXT,
+    ADD COLUMN IF NOT EXISTS size TEXT;
 
 
 -- ============================================================
@@ -396,7 +421,7 @@ ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.costume_rentals ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.rental_equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.equipment ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
 
 
@@ -551,34 +576,97 @@ CREATE POLICY "Staff delete costume_rentals"
     FOR DELETE TO authenticated
     USING (true);
 
+CREATE OR REPLACE FUNCTION public.adjust_equipment_available_stock(
+    p_equipment_id TEXT,
+    p_quantity_delta INTEGER
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $$
+DECLARE
+    updated_available_stock INTEGER;
+BEGIN
+    UPDATE public.equipment
+    SET available_stock = available_stock + p_quantity_delta,
+        updated_at = NOW()
+    WHERE id = p_equipment_id
+      AND available_stock + p_quantity_delta >= 0
+      AND available_stock + p_quantity_delta <= total_stock
+    RETURNING available_stock INTO updated_available_stock;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Insufficient or invalid available stock for equipment %', p_equipment_id;
+    END IF;
+
+    RETURN updated_available_stock;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.adjust_equipment_available_stock(TEXT, INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.adjust_equipment_available_stock(TEXT, INTEGER) TO authenticated;
+
 -- ============================================================
--- 10. RENTAL EQUIPMENT POLICIES
+-- 10. EQUIPMENT POLICIES
 -- ============================================================
 
-DROP POLICY IF EXISTS "Staff select rental_equipment"
-    ON public.rental_equipment;
+DROP POLICY IF EXISTS "Staff select equipment"
+    ON public.equipment;
 
-CREATE POLICY "Staff select rental_equipment"
-    ON public.rental_equipment
+CREATE POLICY "Staff select equipment"
+    ON public.equipment
     FOR SELECT TO authenticated
     USING (true);
 
-DROP POLICY IF EXISTS "Staff insert rental_equipment"
-    ON public.rental_equipment;
+DROP POLICY IF EXISTS "Staff insert equipment"
+    ON public.equipment;
 
-CREATE POLICY "Staff insert rental_equipment"
-    ON public.rental_equipment
+CREATE POLICY "Staff insert equipment"
+    ON public.equipment
     FOR INSERT TO authenticated
     WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Staff update rental_equipment"
-    ON public.rental_equipment;
+DROP POLICY IF EXISTS "Staff update equipment"
+    ON public.equipment;
 
-CREATE POLICY "Staff update rental_equipment"
-    ON public.rental_equipment
+CREATE POLICY "Staff update equipment"
+    ON public.equipment
     FOR UPDATE TO authenticated
     USING (true)
     WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Staff delete equipment"
+  ON public.equipment;
+
+CREATE POLICY "Staff delete equipment"
+  ON public.equipment
+  FOR DELETE TO authenticated
+  USING (true);
+
+-- ============================================================
+-- APP SETTINGS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.app_settings (
+    id TEXT PRIMARY KEY,
+    settings JSONB NOT NULL DEFAULT '{}'::JSONB,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Staff select app settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Staff insert app settings" ON public.app_settings;
+DROP POLICY IF EXISTS "Staff update app settings" ON public.app_settings;
+
+CREATE POLICY "Staff select app settings"
+    ON public.app_settings FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Staff insert app settings"
+    ON public.app_settings FOR INSERT TO authenticated WITH CHECK (true);
+
+CREATE POLICY "Staff update app settings"
+    ON public.app_settings FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- 11. PACKAGES POLICIES
@@ -620,5 +708,5 @@ CREATE POLICY "Staff delete packages"
 NOTIFY pgrst, 'reload schema';
 
 -- ============================================================
--- END OF SERENITY SPORTS CLUB DATABASE SCHEMA
+-- END OF CHAKRESHWAR SWIMMING POOL DATABASE SCHEMA
 -- ============================================================

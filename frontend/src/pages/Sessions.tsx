@@ -188,7 +188,7 @@ export const Sessions: React.FC = () => {
               { id: 'expired', label: 'Expired / Overtime', count: expiredCount, badgeColor: 'bg-red-100 text-red-800' },
               { id: 'completed', label: 'Completed', count: completedTodayCount, badgeColor: '' },
               { id: 'all', label: 'All Sessions', count: sessions.length, badgeColor: '' },
-              { id: 'rentals', label: 'Equipment Rentals', count: rentals.length, badgeColor: '' },
+              { id: 'rentals', label: 'Equipment Records', count: rentals.length, badgeColor: '' },
             ] as const
           ).map((tab) => (
             <button
@@ -377,6 +377,11 @@ export const Sessions: React.FC = () => {
                           <div className="font-bold text-slate-900">
                             {formatCurrency(session.totalCharges)}
                           </div>
+                          {session.penaltyApplied && (session.penaltyCharges || 0) > 0 && (
+                            <div className="text-[10px] text-amber-700 font-semibold">
+                              Penalty: {formatCurrency(session.penaltyCharges || 0)} · {session.penaltyIntervals || 0} intervals · {session.penaltyMinutes || 0}m extra
+                            </div>
+                          )}
                           <div className="text-[10px]">
                             {session.outstandingBalance > 0 ? (
                               <span className="text-[#E12C3D] font-bold">
@@ -474,10 +479,10 @@ export const Sessions: React.FC = () => {
           <div className="p-4 bg-slate-50/70 border-b border-[#E2E8F0] flex items-center justify-between">
             <div>
               <h3 className="font-bold text-sm text-slate-800">
-                Swimming Equipment & Apparel Rentals
+                Equipment Rentals & Sales
               </h3>
               <p className="text-xs text-slate-500">
-                Track active gear, security deposits, and partial returns
+                Track issued rentals, sold items, and partial returns
               </p>
             </div>
             <button
@@ -492,7 +497,7 @@ export const Sessions: React.FC = () => {
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="bg-slate-50/50 border-b border-[#E2E8F0] text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
-                  <th className="py-3 px-4">Rental ID</th>
+                  <th className="py-3 px-4">Record ID</th>
                   <th className="py-3 px-4">Customer Name</th>
                   <th className="py-3 px-4">Equipment Item</th>
                   <th className="py-3 px-4">Size</th>
@@ -514,6 +519,7 @@ export const Sessions: React.FC = () => {
                 ) : (
                   filteredRentals.map((rental) => {
                     const isFullyReturned = rental.status === 'returned';
+                    const isSold = rental.status === 'sold';
                     const pendingQty = rental.quantity - rental.returnedQuantity;
 
                     return (
@@ -545,36 +551,43 @@ export const Sessions: React.FC = () => {
                         </td>
 
                         <td className="py-3.5 px-4">
-                          <span className="font-bold text-slate-800">{rental.quantity} issued</span>
-                          <span className="text-slate-500 ml-1">
-                            ({rental.returnedQuantity} returned
-                            {pendingQty > 0 && (
-                              <span className="text-[#E12C3D] font-bold">, {pendingQty} due</span>
-                            )}
-                            )
-                          </span>
+                          {isSold ? (
+                            <span className="font-bold text-slate-800">{rental.quantity} sold</span>
+                          ) : (
+                            <>
+                              <span className="font-bold text-slate-800">{rental.quantity} issued</span>
+                              <span className="text-slate-500 ml-1">
+                                ({rental.returnedQuantity} returned
+                                {pendingQty > 0 && (
+                                  <span className="text-[#E12C3D] font-bold">, {pendingQty} due</span>
+                                )}
+                                )
+                              </span>
+                            </>
+                          )}
                         </td>
 
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900">
-                            Fee: {formatCurrency(rental.totalRentalAmount)}
-                          </div>
-                          <div className="text-[10px] text-amber-700">
-                            Deposit: {formatCurrency(rental.securityDeposit)}
+                            {isSold ? 'Sale' : 'Fee'}: {formatCurrency(rental.totalRentalAmount)}
                           </div>
                         </td>
 
                         <td className="py-3.5 px-4">
                           <span
                             className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                              rental.status === 'returned'
+                              isSold
+                                ? 'bg-violet-100 text-violet-800'
+                                : rental.status === 'returned'
                                 ? 'bg-emerald-100 text-emerald-800'
                                 : rental.status === 'partial_returned'
                                 ? 'bg-amber-100 text-amber-800'
                                 : 'bg-blue-100 text-blue-800'
                             }`}
                           >
-                            {rental.status === 'returned'
+                            {isSold
+                              ? 'Sold'
+                              : rental.status === 'returned'
                               ? 'Fully Returned'
                               : rental.status === 'partial_returned'
                               ? 'Partially Returned'
@@ -583,7 +596,7 @@ export const Sessions: React.FC = () => {
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
-                          {!isFullyReturned ? (
+                          {!isSold && !isFullyReturned ? (
                             <button
                               onClick={() =>
                                 openModal('return_equipment', { rentalId: rental.id })
@@ -594,7 +607,7 @@ export const Sessions: React.FC = () => {
                             </button>
                           ) : (
                             <span className="text-emerald-600 font-semibold text-xs flex items-center justify-end gap-1">
-                              <CheckCircle className="w-3.5 h-3.5" /> Returned
+                              <CheckCircle className="w-3.5 h-3.5" /> {isSold ? 'Sold' : 'Returned'}
                             </span>
                           )}
                         </td>

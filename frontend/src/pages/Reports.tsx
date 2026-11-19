@@ -194,7 +194,7 @@ export const Reports: React.FC = () => {
   // 3. Swimming vs Rental vs Extension (Recharts BarChart)
   const revenueCategoryBarData = [
     { category: 'Swimming Admission', Amount: monthlySwimRevenue, fill: '#087FA5' },
-    { category: 'Equipment Rental', Amount: monthlyRentalRevenue, fill: '#BE2365' },
+    { category: 'Equipment', Amount: monthlyRentalRevenue, fill: '#BE2365' },
     { category: 'Extensions', Amount: monthlyExtRevenue, fill: '#ED6429' },
   ];
 
@@ -211,7 +211,7 @@ export const Reports: React.FC = () => {
       Duration: `${s.durationMinutes} mins`,
       'Swimming Charges': s.swimmingCharges,
       'Extension Charges': s.extensionCharges,
-      'Rental Charges': s.rentalCharges,
+      'Equipment Charges': s.rentalCharges,
       'Total Bill': s.totalCharges,
       'Paid Amount': s.paidAmount,
       'Payment Status': s.paymentStatus,
@@ -228,7 +228,7 @@ export const Reports: React.FC = () => {
       'Individual Entries': d.individualEntries,
       'Group Entries': d.groupEntries,
       'Swimming Charges': d.swimmingCharges,
-      'Rental Charges': d.rentalCharges,
+      'Equipment Charges': d.rentalCharges,
       'Total Charges': d.totalCharges,
       'Cash Received': d.cash,
       'Online Received': d.online,

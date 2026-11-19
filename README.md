@@ -1,6 +1,6 @@
-# Serenity Sports Club – Swimming Pool Management System (PWA)
+# Chakreshwar Swimming Pool – Swimming Pool Management System (PWA)
 
-Premium swimming pool operations, admission ticketing, real-time timer tracking, and equipment rental management system built specifically for **Serenity Sports Club**, integrated with **Supabase Database & Authentication** and transformed into a full **Progressive Web App (PWA)** with offline capabilities.
+Premium swimming pool operations, admission ticketing, real-time timer tracking, and equipment rental management system built specifically for **Chakreshwar Swimming Pool**, integrated with **Supabase Database & Authentication** and transformed into a full **Progressive Web App (PWA)** with offline capabilities.
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
 
@@ -28,7 +28,7 @@ Premium swimming pool operations, admission ticketing, real-time timer tracking,
   2. `sessions`: Individual and squad swimming passes linked to customer records.
   3. `payments`: Multi-channel payment ledger (`cash`, `google_pay`, `phonepe`, `paytm`, `other`).
   4. `costume_rentals`: Equipment & costume inventory rentals linked by `session_id`, supporting partial returns.
-  5. `rental_equipment`: Persistent accessory rental rates and stock settings shared across devices.
+  5. `equipment`: Persistent accessory sizes, rental rates, and stock shared across devices.
 
 - **Seven Operational Pages**:
   1. **Dashboard** (`/`): Real-time deck monitor, lane counters, expiring alerts, and quick checkout actions.
@@ -113,9 +113,14 @@ Open your Supabase Project Dashboard, navigate to **SQL Editor**, and run the SQ
 
 This script will:
 - Enable the `uuid-ossp` extension.
-- Create all 5 core tables (`customers`, `sessions`, `payments`, `costume_rentals`, `rental_equipment`).
+- Create the core tables (`customers`, `sessions`, `payments`, `costume_rentals`, `equipment`, and `packages`).
 - Create indexes for fast mobile search, session date filtering, and payment ledger lookups.
 - Enable Row Level Security (RLS) and configure staff access policies.
+
+If upgrading a database created with the earlier inventory schema, run
+`frontend/supabase/equipment_inventory_migration.sql` once to migrate the equipment table and add rental-item links and size tracking.
+For an existing database that has already run that inventory migration, run
+`frontend/supabase/equipment_sale_option_migration.sql` once to add optional sale pricing to rental equipment.
 
 ### 2. (Optional) Run PWA Offline Sync Migration
 To enable server-side `updated_at` triggers and explicit payment idempotency indexing, run:
@@ -124,7 +129,7 @@ To enable server-side `updated_at` triggers and explicit payment idempotency ind
 ### 3. Create a Staff User Account
 In your Supabase Dashboard:
 1. Navigate to **Authentication** > **Users** > **Add User** > **Create User**.
-2. Enter a staff email (e.g. `staff@serenitysports.com`) and secure password.
+2. Enter a staff email (e.g. `staff@chakreshwarswimmingpool.com`) and secure password.
 3. Sign in using the **Staff Login** button in the app header or in **Settings**.
 
 ---
@@ -148,5 +153,4 @@ In your Supabase Dashboard:
 ---
 
 ## 📄 License
-Private and proprietary software developed for Serenity Sports Club.
-
+Private and proprietary software developed for Chakreshwar Swimming Pool.

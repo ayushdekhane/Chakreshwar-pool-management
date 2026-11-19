@@ -106,7 +106,7 @@ export const PackageModal: React.FC = () => {
             </label>
             <input
               type="number"
-              min="10"
+              min="1"
               max="360"
               value={durationMinutes}
               onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 0)}

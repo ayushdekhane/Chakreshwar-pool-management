@@ -380,17 +380,100 @@ class SyncEngine {
         break;
       }
 
+      case 'settings': {
+        if (operation === 'update') {
+          const settings = payload.settings;
+          if (!settings) throw new Error('Settings payload is missing.');
+
+          const { error } = await supabase
+            .from('app_settings')
+            .upsert({
+              id: 'default',
+              settings,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' });
+          if (error) throw error;
+
+          await offlineDb.sync_metadata.put({
+            key: 'app_settings',
+            value: settings,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        break;
+      }
+
       case 'equipment': {
         if (operation === 'update') {
           const { _lastSyncedAt, ...cleanData } = payload;
+          const quantityDelta = cleanData.available_stock_delta;
+          if (typeof quantityDelta === 'number') {
+            const { data, error } = await supabase.rpc('adjust_equipment_available_stock', {
+              p_equipment_id: entityId,
+              p_quantity_delta: quantityDelta,
+            });
+            if (!error) {
+              await offlineDb.equipment.update(entityId, {
+                available_stock: Number(data),
+                _lastSyncedAt: new Date().toISOString(),
+              });
+              break;
+            }
+
+            const migrationMissing =
+              error.code === 'PGRST202' ||
+              error.message.includes('Could not find the function') ||
+              error.message.includes('adjust_equipment_available_stock');
+
+            if (!migrationMissing) throw error;
+
+            const { data: row, error: fetchError } = await supabase
+              .from('equipment')
+              .select('available_stock,total_stock')
+              .eq('id', entityId)
+              .single();
+            if (fetchError || !row) throw fetchError || new Error(`Equipment ${entityId} was not found.`);
+
+            const nextAvailable = row.available_stock + quantityDelta;
+            if (nextAvailable < 0 || nextAvailable > row.total_stock) {
+              throw new Error(`Insufficient or invalid available stock for equipment ${entityId}.`);
+            }
+
+            const { data: updatedRow, error: updateError } = await supabase
+              .from('equipment')
+              .update({
+                available_stock: nextAvailable,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', entityId)
+              .select('available_stock')
+              .single();
+            if (updateError || !updatedRow) {
+              throw updateError || new Error(`Failed to update equipment ${entityId}.`);
+            }
+
+            await offlineDb.equipment.update(entityId, {
+              available_stock: Number(updatedRow.available_stock),
+              _lastSyncedAt: new Date().toISOString(),
+            });
+            break;
+          }
+
           const { error } = await supabase
-            .from('rental_equipment')
+            .from('equipment')
             .upsert(cleanData, { onConflict: 'id' });
           if (error) throw error;
-          await offlineDb.rental_equipment.put({
+          await offlineDb.equipment.put({
             ...cleanData as any,
             _lastSyncedAt: new Date().toISOString(),
           });
+        } else if (operation === 'delete') {
+          const { error } = await supabase
+            .from('equipment')
+            .delete()
+            .eq('id', entityId);
+          if (error) throw error;
+          await offlineDb.equipment.delete(entityId);
         }
         break;
       }
@@ -438,4 +521,3 @@ class SyncEngine {
 }
 
 export const syncEngine = new SyncEngine();
-

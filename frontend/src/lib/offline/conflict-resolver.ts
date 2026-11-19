@@ -133,7 +133,7 @@ export const conflictResolver = {
   ): Promise<ConflictResolution> {
     try {
       const { data: serverItem, error } = await supabase
-        .from('rental_equipment')
+        .from('equipment')
         .select('*')
         .eq('id', equipmentId)
         .maybeSingle();
@@ -153,4 +153,3 @@ export const conflictResolver = {
     }
   },
 };
-

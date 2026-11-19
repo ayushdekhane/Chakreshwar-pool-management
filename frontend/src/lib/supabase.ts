@@ -12,7 +12,7 @@ export const isSupabaseConfigured = Boolean(
 );
 
 // Fallback dummy credentials to prevent createClient crashes when env vars are missing
-const validUrl = isSupabaseConfigured ? supabaseUrl : 'https://placeholder-serenity.supabase.co';
+const validUrl = isSupabaseConfigured ? supabaseUrl : 'https://placeholder-chakreshwar.supabase.co';
 const validKey = isSupabaseConfigured ? supabaseAnonKey : 'placeholder-anon-key';
 
 export const supabase = createClient(validUrl, validKey, {
@@ -24,4 +24,3 @@ export const supabase = createClient(validUrl, validKey, {
 });
 
 export default supabase;
-

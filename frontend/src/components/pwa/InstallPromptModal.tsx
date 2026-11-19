@@ -21,7 +21,7 @@ export const InstallPromptModal: React.FC = () => {
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#087FA5] to-[#70218C] flex items-center justify-center p-2 shadow-sm text-white">
-            <img src="/icons/pool-logo.svg" alt="Serenity Logo" className="w-full h-full object-contain filter invert brightness-200" />
+            <img src="/icons/pool-logo.svg" alt="Chakreshwar Swimming Pool Logo" className="w-full h-full object-contain filter invert brightness-200" />
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-900 leading-snug">
@@ -73,4 +73,3 @@ export const InstallPromptModal: React.FC = () => {
     </div>
   );
 };
-

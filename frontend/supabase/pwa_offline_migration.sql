@@ -1,5 +1,5 @@
 -- ====================================================================
--- SERENITY SPORTS CLUB – PWA OFFLINE SYNCHRONIZATION MIGRATION (OPTIONAL)
+-- CHAKRESHWAR SWIMMING POOL – PWA OFFLINE SYNCHRONIZATION MIGRATION (OPTIONAL)
 -- ====================================================================
 -- This migration is OPTIONAL. The PWA works seamlessly with the existing
 -- five tables without running this migration.
@@ -47,4 +47,3 @@ CREATE TRIGGER trigger_costume_rentals_updated_at
     BEFORE UPDATE ON public.costume_rentals
     FOR EACH ROW
     EXECUTE FUNCTION public.handle_updated_at();
-

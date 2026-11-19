@@ -2,7 +2,8 @@ export type SessionStatus = 'active' | 'expiring' | 'expired' | 'completed' | 'c
 export type SessionType = 'individual' | 'group';
 export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 export type PaymentMethod = 'cash' | 'online' | 'gpay' | 'phonepe' | 'paytm' | 'other';
-export type RentalStatus = 'active' | 'returned' | 'partial_returned';
+export type EquipmentType = 'rental' | 'sale';
+export type RentalStatus = 'active' | 'returned' | 'partial_returned' | 'sold';
 
 export interface Customer {
   id: string;
@@ -40,6 +41,7 @@ export interface RentalItem {
   customerName: string;
   equipmentId: string;
   equipmentName: string;
+  equipmentType?: EquipmentType;
   size?: string;
   quantity: number;
   returnedQuantity: number;
@@ -84,6 +86,10 @@ export interface Session {
   status: SessionStatus;
   swimmingCharges: number;
   extensionCharges: number;
+  penaltyCharges?: number;
+  penaltyApplied?: boolean;
+  penaltyMinutes?: number;
+  penaltyIntervals?: number;
   rentalCharges: number;
   totalCharges: number;
   paidAmount: number;
@@ -98,7 +104,9 @@ export interface Session {
 export interface Equipment {
   id: string;
   name: string;
-  category: string;
+  equipmentType: EquipmentType;
+  availableForSale?: boolean;
+  saleRate?: number;
   sizes: string[];
   defaultRate: number;
   defaultDeposit: number;
@@ -124,8 +132,9 @@ export interface Settings {
   currency: string;
   timezone: string;
   gstNumber: string;
-  baseRatePerHour: number;
-  overtimeRatePer15Min: number;
+  penaltyEnabled: boolean;
+  penaltyAfterMinutes: number;
+  penaltyAmount: number;
   fiveMinuteWarning: boolean;
   expiryAlarm: boolean;
   soundEnabled: boolean;

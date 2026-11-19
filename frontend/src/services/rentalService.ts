@@ -57,8 +57,12 @@ export const rentalService = {
    * Uses real session UUID. Let PostgreSQL generate the rental UUID.
    */
   async addRental(data: {
-    session_id: string;
+    session_id?: string;
+    equipment_id?: string;
     item_name: string;
+    customer_name?: string;
+    size?: string;
+    equipment_type: 'rental' | 'sale';
     quantity: number;
     rental_charge: number;
   }): Promise<DbCostumeRental> {
@@ -66,7 +70,7 @@ export const rentalService = {
       throw new Error('Supabase is not configured.');
     }
 
-    if (!isValidUuid(data.session_id)) {
+    if (data.session_id && !isValidUuid(data.session_id)) {
       throw new Error(`Cannot add rental: Session ID "${data.session_id}" is not a valid UUID.`);
     }
 
@@ -74,8 +78,12 @@ export const rentalService = {
     const { data: newRental, error } = await supabase
       .from('costume_rentals')
       .insert({
-        session_id: data.session_id,
+        session_id: data.session_id || null,
+        equipment_id: data.equipment_id,
         item_name: data.item_name,
+        customer_name: data.customer_name || null,
+        size: data.size,
+        equipment_type: data.equipment_type,
         quantity: data.quantity,
         returned_quantity: 0,
         rental_charge: data.rental_charge,
@@ -99,13 +107,15 @@ export const rentalService = {
     }
 
     // Mark costume_used = true on session
-    try {
-      await supabase
-        .from('sessions')
-        .update({ costume_used: true })
-        .eq('id', data.session_id);
-    } catch {
-      // non-blocking
+    if (data.session_id) {
+      try {
+        await supabase
+          .from('sessions')
+          .update({ costume_used: true })
+          .eq('id', data.session_id);
+      } catch {
+        // non-blocking
+      }
     }
 
     return newRental as DbCostumeRental;

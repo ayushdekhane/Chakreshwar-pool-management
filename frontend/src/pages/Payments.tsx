@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 
 export const Payments: React.FC = () => {
   const payments = usePoolStore((state) => state.payments);
+  const sessions = usePoolStore((state) => state.sessions);
   const openModal = usePoolStore((state) => state.openModal);
   const deletePayment = usePoolStore((state) => state.deletePayment);
 
@@ -87,7 +88,7 @@ export const Payments: React.FC = () => {
       Timestamp: p.timestamp,
       Status: p.status,
     }));
-    exportToCsv('Serenity_Payments_Ledger', exportData);
+    exportToCsv('Chakreshwar_Payments_Ledger', exportData);
     toast.success('Payments ledger exported to CSV!');
   };
 
@@ -107,7 +108,7 @@ export const Payments: React.FC = () => {
       Timestamp: p.timestamp,
       Status: p.status,
     }));
-    exportToExcel('Serenity_Payments_Ledger', [
+    exportToExcel('Chakreshwar_Payments_Ledger', [
       { sheetName: 'Payments', data: exportData },
     ]);
     toast.success('Payments ledger exported to Excel (.xlsx)!');
@@ -299,6 +300,15 @@ export const Payments: React.FC = () => {
                         >
                           +{formatCurrency(p.amount)}
                         </span>
+                        {(() => {
+                          const session = sessions.find((item) => item.id === p.sessionId);
+                          if (!session?.penaltyApplied || !session.penaltyCharges) return null;
+                          return (
+                            <span className="block text-[10px] font-semibold text-amber-700">
+                              Includes penalty: {formatCurrency(session.penaltyCharges)} · {session.penaltyIntervals || 0} intervals · {session.penaltyMinutes || 0}m extra
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* Status */}

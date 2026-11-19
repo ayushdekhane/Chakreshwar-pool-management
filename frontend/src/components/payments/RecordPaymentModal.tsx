@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { CreditCard, CheckCircle2, User, Receipt, Banknote, Smartphone } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency } from '../../utils';
+import { calculateOvertimePenalty, formatCurrency } from '../../utils';
 import { PaymentMethod } from '../../types';
 
 export const RecordPaymentModal: React.FC = () => {
@@ -11,6 +11,7 @@ export const RecordPaymentModal: React.FC = () => {
   const selectedSessionId = usePoolStore((state) => state.selectedSessionId);
   const closeModal = usePoolStore((state) => state.closeModal);
   const sessions = usePoolStore((state) => state.sessions);
+  const settings = usePoolStore((state) => state.settings);
   const recordPayment = usePoolStore((state) => state.recordPayment);
 
   // If a session was selected, use it, else pick first with pending balance
@@ -39,6 +40,23 @@ export const RecordPaymentModal: React.FC = () => {
   }, [currentSessionId, activeSession]);
 
   if (!activeSession) return null;
+
+  const overtimeMinutes = activeSession.penaltyApplied
+    ? (activeSession.penaltyMinutes || 0)
+    : Math.max(
+        0,
+        Math.floor((Date.now() - new Date(activeSession.scheduledExitTime).getTime()) / 60000)
+      );
+  const expectedPenalty =
+    !activeSession.penaltyApplied &&
+    settings.penaltyEnabled &&
+    overtimeMinutes >= (settings.penaltyAfterMinutes || 1)
+      ? calculateOvertimePenalty(
+          overtimeMinutes,
+          settings.penaltyAfterMinutes || 1,
+          settings.penaltyAmount || 0
+        ).charge
+      : 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,6 +140,20 @@ export const RecordPaymentModal: React.FC = () => {
             </span>
           </div>
         </div>
+        {activeSession.penaltyApplied && (activeSession.penaltyCharges || 0) > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">Overtime penalty:</span>{' '}
+            {activeSession.penaltyMinutes || 0} minutes extra ·{' '}
+            {formatCurrency(activeSession.penaltyCharges || 0)}
+          </div>
+        )}
+        {expectedPenalty > 0 && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            <span className="font-bold">Expected overtime penalty:</span>{' '}
+            {Math.floor(overtimeMinutes / (settings.penaltyAfterMinutes || 1))} intervals ·{' '}
+            {overtimeMinutes} minutes extra · {formatCurrency(expectedPenalty)}
+          </div>
+        )}
 
         {/* Payment Amount Input */}
         <div>
@@ -236,4 +268,3 @@ export const RecordPaymentModal: React.FC = () => {
     </Modal>
   );
 };
-

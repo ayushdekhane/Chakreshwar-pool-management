@@ -22,6 +22,15 @@ const schema = z.object({
 });
 
 type FormData = z.infer<typeof schema>;
+type SelectedAccessory = {
+  equipmentId: string;
+  transactionType: 'rental' | 'sale';
+  quantity: number;
+  size?: string;
+};
+
+const getAccessoryKey = (equipmentId: string, type: 'rental' | 'sale') =>
+  `${equipmentId}:${type}`;
 
 export const GroupEntryModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -29,7 +38,10 @@ export const GroupEntryModal: React.FC = () => {
   const packages = usePoolStore((state) => state.packages.filter((p) => p.isActive));
   const equipment = usePoolStore((state) => state.equipment);
   const createGroupSession = usePoolStore((state) => state.createGroupSession);
-  const [selectedAccessories, setSelectedAccessories] = useState<Record<string, number>>({});
+  const [selectedAccessories, setSelectedAccessories] = useState<
+    Record<string, SelectedAccessory>
+  >({});
+  const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
 
   const defaultPkg = packages[0];
 
@@ -66,11 +78,14 @@ export const GroupEntryModal: React.FC = () => {
     Number.isInteger(memberCount) && memberCount >= 2
       ? (selectedPkg?.price || 0) * memberCount
       : 0;
-  const rentalTotal = equipment.reduce(
-    (total, item) => total + item.defaultRate * (selectedAccessories[item.id] || 0),
-    0
-  );
-  const groupTotal = calculatedTotal + rentalTotal;
+  const equipmentTotal = Object.values(selectedAccessories).reduce((total, selection) => {
+    const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+    const rate = selection.transactionType === 'sale'
+      ? item?.saleRate ?? item?.defaultRate ?? 0
+      : item?.defaultRate ?? 0;
+    return total + rate * selection.quantity;
+  }, 0);
+  const groupTotal = calculatedTotal + equipmentTotal;
   const previousGroupTotal = useRef(groupTotal);
 
   useEffect(() => {
@@ -90,11 +105,12 @@ export const GroupEntryModal: React.FC = () => {
       setValue('initialPayment', groupTotal);
     }
     previousGroupTotal.current = groupTotal;
-  }, [calculatedTotal, getValues, groupTotal, rentalTotal, setValue]);
+  }, [calculatedTotal, getValues, groupTotal, equipmentTotal, setValue]);
 
   useEffect(() => {
     if (activeModal === 'group_entry') {
       setSelectedAccessories({});
+      setEquipmentType('rental');
     }
   }, [activeModal]);
 
@@ -104,21 +120,37 @@ export const GroupEntryModal: React.FC = () => {
       return;
     }
 
-    const rentalItems = equipment
-      .filter((item) => (selectedAccessories[item.id] || 0) > 0)
-      .map((item) => ({
-        equipmentId: item.id,
-        size: item.sizes[0] || 'Standard',
-        quantity: selectedAccessories[item.id],
-        pricePerItem: item.defaultRate,
-        securityDeposit: item.defaultDeposit * selectedAccessories[item.id],
-      }));
+    const rentalItems = Object.values(selectedAccessories).map((selection) => {
+      const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+      return {
+        equipmentId: selection.equipmentId,
+        transactionType: selection.transactionType,
+        size: selection.size,
+        quantity: selection.quantity,
+        pricePerItem: selection.transactionType === 'sale'
+          ? item?.saleRate ?? item?.defaultRate ?? 0
+          : item?.defaultRate ?? 0,
+      };
+    });
 
     if (rentalItems.some((rental) => {
       const item = equipment.find((candidate) => candidate.id === rental.equipmentId);
       return !Number.isInteger(rental.quantity) || rental.quantity > (item?.availableStock || 0);
     })) {
       toast.error('The selected accessory quantity exceeds available stock.');
+      return;
+    }
+
+    const quantityByEquipment = rentalItems.reduce<Record<string, number>>((totals, rental) => {
+      totals[rental.equipmentId] = (totals[rental.equipmentId] || 0) + rental.quantity;
+      return totals;
+    }, {});
+    const exceedsCombinedStock = Object.entries(quantityByEquipment).some(([equipmentId, quantity]) => {
+      const item = equipment.find((candidate) => candidate.id === equipmentId);
+      return quantity > (item?.availableStock || 0);
+    });
+    if (exceedsCombinedStock) {
+      toast.error('The combined rental and sale quantity exceeds available stock.');
       return;
     }
 
@@ -212,23 +244,46 @@ export const GroupEntryModal: React.FC = () => {
           )}
         </div>
 
-        {/* Group Accessories */}
+        {/* Group Equipment */}
         <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-xs font-bold text-slate-700">Rent Accessories for the Group</h3>
+              <h3 className="text-xs font-bold text-slate-700">Add Equipment for the Group</h3>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                Optional. Select accessories and the quantity to rent.
+                Optional. Select equipment and the quantity.
               </p>
             </div>
             <span className="text-xs font-bold text-[#70218C]">
-              Rental total: {formatCurrency(rentalTotal)}
+              Equipment total: {formatCurrency(equipmentTotal)}
             </span>
           </div>
 
+          <label className="block text-xs font-semibold text-slate-700">
+  Equipment type
+  <select
+    value={equipmentType}
+    onChange={(event) =>
+      setEquipmentType(event.target.value as 'rental' | 'sale')
+    }
+    className="ml-3 px-2 pr-15 py-2 rounded-lg border border-slate-300 bg-white"
+  >
+    <option value="rental">Rental equipment</option>
+    <option value="sale">Sell equipment</option>
+  </select>
+</label>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {equipment.map((item) => {
-              const quantity = selectedAccessories[item.id] || 0;
+            {equipment
+              .filter((item) =>
+                equipmentType === 'rental'
+                  ? item.equipmentType === 'rental'
+                  : item.equipmentType === 'sale' || item.availableForSale
+              )
+              .sort((left, right) => left.name.localeCompare(right.name))
+              .map((item) => {
+              const accessoryKey = getAccessoryKey(item.id, equipmentType);
+              const selectedAccessory = selectedAccessories[accessoryKey];
+              const quantity = selectedAccessory?.quantity || 0;
               const isSelected = quantity > 0;
               return (
                 <div
@@ -245,10 +300,18 @@ export const GroupEntryModal: React.FC = () => {
                       onChange={(event) => {
                         setSelectedAccessories((current) => {
                           if (event.target.checked) {
-                            return { ...current, [item.id]: 1 };
+                            return {
+                              ...current,
+                              [accessoryKey]: {
+                                equipmentId: item.id,
+                                transactionType: equipmentType,
+                                quantity: 1,
+                                size: item.sizes[0],
+                              },
+                            };
                           }
                           const next = { ...current };
-                          delete next[item.id];
+                          delete next[accessoryKey];
                           return next;
                         });
                       }}
@@ -259,33 +322,61 @@ export const GroupEntryModal: React.FC = () => {
                         {item.name}
                       </span>
                       <span className="block text-[11px] text-slate-500">
-                        Price: {formatCurrency(item.defaultRate)} each · Available stock: {item.availableStock}
+                        {equipmentType === 'rental' ? 'Rental fee' : 'Sale price'}: {formatCurrency(equipmentType === 'sale' ? item.saleRate ?? item.defaultRate : item.defaultRate)} each · Available stock: {item.availableStock}
                       </span>
                     </span>
                   </label>
                   {isSelected && (
-                    <input
-                      aria-label={`${item.name} quantity`}
-                      type="number"
-                      min={1}
-                      max={item.availableStock}
-                      step={1}
-                      value={quantity}
-                      onChange={(event) => {
-                        const nextQuantity = Number(event.target.value);
-                        setSelectedAccessories((current) => ({
-                          ...current,
-                          [item.id]: Number.isInteger(nextQuantity) && nextQuantity > 0
-                            ? nextQuantity
-                            : 1,
-                        }));
-                      }}
-                      className="w-16 px-2 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold"
-                    />
+                    <div className="flex items-center gap-2">
+                      {item.sizes.length > 1 && (
+                        <select
+                          aria-label={`${item.name} size`}
+                          value={selectedAccessory.size}
+                          onChange={(event) =>
+                            setSelectedAccessories((current) => ({
+                              ...current,
+                              [accessoryKey]: { ...current[accessoryKey], size: event.target.value },
+                            }))
+                          }
+                          className="max-w-24 px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                        >
+                          {item.sizes.map((size) => (
+                            <option key={size} value={size}>{size}</option>
+                          ))}
+                        </select>
+                      )}
+                      {item.sizes.length === 1 && (
+                        <span className="text-xs text-slate-600">{item.sizes[0]}</span>
+                      )}
+                      {item.sizes.length === 0 && (
+                        <span className="text-xs text-slate-500">N/A</span>
+                      )}
+                      <input
+                        aria-label={`${item.name} quantity`}
+                        type="number"
+                        min={1}
+                        max={item.availableStock}
+                        step={1}
+                        value={quantity}
+                        onChange={(event) => {
+                          const nextQuantity = Number(event.target.value);
+                          setSelectedAccessories((current) => ({
+                            ...current,
+                            [accessoryKey]: {
+                              ...current[accessoryKey],
+                              quantity: Number.isInteger(nextQuantity) && nextQuantity > 0
+                                ? nextQuantity
+                                : 1,
+                            },
+                          }));
+                        }}
+                        className="w-16 px-2 py-1.5 text-xs rounded-lg border border-slate-300 font-semibold"
+                      />
+                    </div>
                   )}
                 </div>
               );
-            })}
+              })}
           </div>
         </div>
 

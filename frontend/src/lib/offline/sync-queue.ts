@@ -23,9 +23,21 @@ export const syncQueue = {
 
     if (existing && existing.status !== 'completed') {
       // Merge payload and reset retry count
+      let mergedPayload = { ...existing.payload, ...params.payload };
+      if (
+        params.entityType === 'equipment' &&
+        typeof existing.payload.available_stock_delta === 'number' &&
+        typeof params.payload.available_stock_delta === 'number'
+      ) {
+        mergedPayload = {
+          ...existing.payload,
+          available_stock_delta:
+            existing.payload.available_stock_delta + params.payload.available_stock_delta,
+        };
+      }
       const updated: SyncQueueItem = {
         ...existing,
-        payload: { ...existing.payload, ...params.payload },
+        payload: mergedPayload,
         status: 'pending',
         attempts: 0,
         lastError: null,
@@ -80,6 +92,7 @@ export const syncQueue = {
       rental: 3,
       payment: 4,
       equipment: 5,
+      settings: 6,
     };
 
     return pending.sort((a, b) => {
@@ -143,4 +156,3 @@ export const syncQueue = {
     await offlineDb.sync_queue.bulkDelete(ids);
   },
 };
-

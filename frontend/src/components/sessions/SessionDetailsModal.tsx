@@ -160,11 +160,21 @@ export const SessionDetailsModal: React.FC = () => {
               </span>
             </div>
             <div>
-              <span className="text-slate-500 block">Rental Charges</span>
+              <span className="text-slate-500 block">Equipment Charges</span>
               <span className="font-bold text-slate-800 text-sm">
                 {formatCurrency(session.rentalCharges)}
               </span>
             </div>
+            {session.penaltyApplied && (session.penaltyCharges || 0) > 0 && (
+              <div>
+                <span className="text-slate-500 block">
+                  Penalty ({session.penaltyIntervals || 0} intervals · {session.penaltyMinutes || 0}m extra)
+                </span>
+                <span className="font-bold text-amber-700 text-sm">
+                  {formatCurrency(session.penaltyCharges || 0)}
+                </span>
+              </div>
+            )}
             <div>
               <span className="text-slate-500 block">Total Bill</span>
               <span className="font-extrabold text-[#087FA5] text-base">
@@ -233,12 +243,12 @@ export const SessionDetailsModal: React.FC = () => {
           </div>
         )}
 
-        {/* Equipment Rentals attached */}
+        {/* Equipment items attached */}
         {session.rentals && session.rentals.length > 0 && (
           <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Shirt className="w-4 h-4 text-[#087FA5]" />
-              Rented Equipment ({session.rentals.length})
+              Equipment Items ({session.rentals.length})
             </h4>
             <div className="space-y-2">
               {session.rentals.map((rnt) => (
@@ -249,24 +259,30 @@ export const SessionDetailsModal: React.FC = () => {
                   <div>
                     <span className="font-bold text-slate-800">{rnt.equipmentName}</span>
                     <span className="text-slate-500 ml-1">
-                      (Qty: {rnt.quantity}, Returned: {rnt.returnedQuantity})
+                      ({rnt.equipmentType === 'sale' ? 'Sold' : `Qty: ${rnt.quantity}, Returned: ${rnt.returnedQuantity}`})
                     </span>
-                    <div className="text-[11px] text-slate-500">
-                      Size: {rnt.size || 'Standard'} · Deposit: {formatCurrency(rnt.securityDeposit)}
-                    </div>
+                    {rnt.equipmentType !== 'sale' && (
+                      <div className="text-[11px] text-slate-500">
+                        {rnt.size ? `Size: ${rnt.size}` : 'Size not applicable'}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <span
                       className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        rnt.status === 'returned'
+                        rnt.status === 'sold'
+                          ? 'bg-violet-100 text-violet-800'
+                          : rnt.status === 'returned'
                           ? 'bg-emerald-100 text-emerald-800'
                           : rnt.status === 'partial_returned'
                           ? 'bg-amber-100 text-amber-800'
                           : 'bg-blue-100 text-blue-800'
                       }`}
                     >
-                      {rnt.status === 'returned'
+                      {rnt.status === 'sold'
+                        ? 'Sold'
+                        : rnt.status === 'returned'
                         ? 'Returned'
                         : rnt.status === 'partial_returned'
                         ? 'Partial Return'

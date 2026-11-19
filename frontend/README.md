@@ -1,6 +1,6 @@
-# Serenity Sports Club – Swimming Pool Management System (Frontend & PWA)
+# Chakreshwar Swimming Pool – Swimming Pool Management System (Frontend & PWA)
 
-Premium swimming pool operations and admission management system built specifically for **Serenity Sports Club**, integrated with **Supabase Database & Authentication** and converted into a complete **Progressive Web App (PWA)** with offline capabilities.
+Premium swimming pool operations and admission management system built specifically for **Chakreshwar Swimming Pool**, integrated with **Supabase Database & Authentication** and converted into a complete **Progressive Web App (PWA)** with offline capabilities.
 
 ---
 
@@ -26,7 +26,7 @@ Premium swimming pool operations and admission management system built specifica
   2. `sessions`: Individual swimmer records and group squads sharing a `group_code`, leader display name, and swimmer count.
   3. `payments`: Multi-channel payment ledger (`cash`, `google_pay`, `phonepe`, `paytm`, `other`). Outstanding amounts calculate dynamically from session charges minus recorded payments.
   4. `costume_rentals`: Equipment & costume inventory rentals linked by `session_id`, tracking item name, quantity, returned quantity, and charges with partial return support.
-  5. `rental_equipment`: Persistent accessory rental rates and stock settings shared across staff sessions and browser refreshes.
+  5. `equipment`: Persistent accessory sizes, rental rates, and stock settings shared across staff sessions and browser refreshes.
 
 - **Supabase Authentication & Security**:
   - Row Level Security (RLS) enabled on all 5 tables.
@@ -60,6 +60,10 @@ This script will:
 
 If your Supabase database was already set up, run `supabase/packages_migration.sql` in the SQL Editor once. It creates the packages table and adds package details to session records so individual and group registrations retain their selected package.
 
+If your database uses the earlier equipment inventory schema, also run `supabase/equipment_inventory_migration.sql` once. It adds the equipment references and size tracking used by rental returns.
+
+If that inventory migration has already been applied, run `supabase/equipment_sale_option_migration.sql` once to add optional sale pricing for rental equipment.
+
 ### 2. (Optional) Run PWA Offline Sync Migration
 `supabase/pwa_offline_migration.sql`
 
@@ -76,7 +80,7 @@ VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 ### 4. Create a Staff User
 In the Supabase Dashboard, navigate to **Authentication** > **Users** > **Add User** > **Create User**.
-Enter a staff email (e.g. `staff@serenitysports.com`) and password.
+Enter a staff email (e.g. `staff@chakreshwarswimmingpool.com`) and password.
 
 ### 5. Configure Password Reset
 In Supabase, open **Authentication** > **URL Configuration**:

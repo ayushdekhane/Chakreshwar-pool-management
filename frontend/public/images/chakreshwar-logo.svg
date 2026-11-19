@@ -16,9 +16,8 @@
     <path d="M52 39C58 33 67 27 76 25" stroke="#087FA5" stroke-width="4" stroke-linecap="round"/>
   </g>
   <!-- Wordmark -->
-  <text x="82" y="38" font-family="'Inter', sans-serif" font-size="20" font-weight="800" fill="#087FA5" letter-spacing="1.5">SERENITY</text>
-  <text x="194" y="38" font-family="'Inter', sans-serif" font-size="20" font-weight="800" fill="#70218C" letter-spacing="1.5">SPORTS</text>
+  <text x="82" y="38" font-family="'Inter', sans-serif" font-size="15" font-weight="800" fill="#087FA5" letter-spacing="1">CHAKRESHWAR</text>
+  <text x="82" y="55" font-family="'Inter', sans-serif" font-size="13" font-weight="800" fill="#70218C" letter-spacing="1">SWIMMING POOL</text>
   <text x="82" y="58" font-family="'Inter', sans-serif" font-size="10.5" font-weight="600" fill="#64748B" letter-spacing="3.5">SWIMMING POOL OPERATIONS</text>
   <circle cx="316" cy="34" r="4" fill="#EFB33A" />
 </svg>
-

@@ -1,15 +1,16 @@
 import { Customer, Package, Equipment, Session, PaymentRecord, RentalItem, Settings } from '../types';
 
 export const initialSettings: Settings = {
-  businessName: 'Serenity Sports Club',
+  businessName: 'Chakreshwar Swimming Pool',
   phone: '+91 98200 12345',
-  address: 'Serenity Sports Complex, Outer Ring Road, Bengaluru, Karnataka 560103',
-  email: 'info@serenitysportsclub.com',
+  address: 'Chakreshwar Swimming Pool, Outer Ring Road, Bengaluru, Karnataka 560103',
+  email: 'info@chakreshwarswimmingpool.com',
   currency: '₹',
   timezone: 'Asia/Kolkata',
   gstNumber: '29AABCS1429B1Z8',
-  baseRatePerHour: 100,
-  overtimeRatePer15Min: 30,
+  penaltyEnabled: true,
+  penaltyAfterMinutes: 15,
+  penaltyAmount: 50,
   fiveMinuteWarning: true,
   expiryAlarm: true,
   soundEnabled: true,
@@ -71,7 +72,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-costume-men',
     name: 'Swimming Costume (Men)',
-    category: 'Apparel',
+    equipmentType: 'rental',
     sizes: ['S', 'M', 'L', 'XL'],
     defaultRate: 50,
     defaultDeposit: 100,
@@ -81,7 +82,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-costume-women',
     name: 'Swimming Costume (Women)',
-    category: 'Apparel',
+    equipmentType: 'rental',
     sizes: ['S', 'M', 'L', 'XL'],
     defaultRate: 50,
     defaultDeposit: 100,
@@ -91,7 +92,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-goggles',
     name: 'Anti-Fog Swimming Goggles',
-    category: 'Gear',
+    equipmentType: 'rental',
     sizes: ['Standard'],
     defaultRate: 30,
     defaultDeposit: 50,
@@ -101,7 +102,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-towel',
     name: 'Microfiber Quick-Dry Towel',
-    category: 'Apparel',
+    equipmentType: 'rental',
     sizes: ['Standard', 'Large'],
     defaultRate: 40,
     defaultDeposit: 50,
@@ -111,7 +112,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-cap',
     name: 'Silicone Swimming Cap',
-    category: 'Gear',
+    equipmentType: 'rental',
     sizes: ['Free Size'],
     defaultRate: 20,
     defaultDeposit: 30,
@@ -121,7 +122,7 @@ export const initialEquipment: Equipment[] = [
   {
     id: 'eq-kickboard',
     name: 'Training Kickboard / Float',
-    category: 'Training',
+    equipmentType: 'rental',
     sizes: ['Standard'],
     defaultRate: 30,
     defaultDeposit: 50,

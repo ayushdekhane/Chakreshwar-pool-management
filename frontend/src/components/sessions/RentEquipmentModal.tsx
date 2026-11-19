@@ -10,16 +10,17 @@ export const RentEquipmentModal: React.FC = () => {
   const selectedSessionId = usePoolStore((state) => state.selectedSessionId);
   const closeModal = usePoolStore((state) => state.closeModal);
   const sessions = usePoolStore((state) => state.sessions);
-  const equipment = usePoolStore((state) => state.equipment);
+  const equipment = usePoolStore((state) =>
+    state.equipment.filter((item) => item.equipmentType === 'rental')
+  );
   const issueRental = usePoolStore((state) => state.issueRental);
 
   const [sessionId, setSessionId] = useState<string>(selectedSessionId || '');
   const [guestName, setGuestName] = useState<string>('');
   const [equipmentId, setEquipmentId] = useState<string>(equipment[0]?.id || '');
-  const [size, setSize] = useState<string>('Standard');
+  const [size, setSize] = useState<string | undefined>(equipment[0]?.sizes[0]);
   const [quantity, setQuantity] = useState<number>(1);
   const [customPrice, setCustomPrice] = useState<string>('');
-  const [deposit, setDeposit] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
 
   const selectedEq = equipment.find((e) => e.id === equipmentId) || equipment[0];
@@ -27,7 +28,6 @@ export const RentEquipmentModal: React.FC = () => {
 
   const pricePerItem = customPrice !== '' ? parseFloat(customPrice) || 0 : selectedEq?.defaultRate || 50;
   const totalRental = pricePerItem * quantity;
-  const securityDeposit = deposit !== '' ? parseFloat(deposit) || 0 : (selectedEq?.defaultDeposit || 50) * quantity;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +55,6 @@ export const RentEquipmentModal: React.FC = () => {
         size,
         quantity,
         pricePerItem,
-        securityDeposit,
         notes,
       });
 
@@ -128,9 +127,9 @@ export const RentEquipmentModal: React.FC = () => {
               onChange={(e) => {
                 setEquipmentId(e.target.value);
                 const eq = equipment.find((item) => item.id === e.target.value);
-                if (eq && eq.sizes.length > 0) {
-                  setSize(eq.sizes[0]);
-                }
+                setSize(eq?.sizes[0]);
+                setQuantity(1);
+                setCustomPrice('');
               }}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium"
             >
@@ -142,7 +141,7 @@ export const RentEquipmentModal: React.FC = () => {
             </select>
           </div>
 
-          <div>
+          {selectedEq.sizes.length > 0 ? <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Size
             </label>
@@ -157,11 +156,15 @@ export const RentEquipmentModal: React.FC = () => {
                 </option>
               ))}
             </select>
-          </div>
+          </div> : (
+            <div className="flex items-center text-xs text-slate-500">
+              Size not applicable for this equipment.
+            </div>
+          )}
         </div>
 
-        {/* Quantity, Rate & Deposit */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Quantity & Rate */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Quantity
@@ -169,7 +172,7 @@ export const RentEquipmentModal: React.FC = () => {
             <input
               type="number"
               min="1"
-              max={selectedEq.availableStock || 10}
+              max={selectedEq.availableStock}
               value={quantity}
               onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-bold"
@@ -188,17 +191,6 @@ export const RentEquipmentModal: React.FC = () => {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Security Deposit (₹)
-            </label>
-            <input
-              type="number"
-              value={deposit !== '' ? deposit : (selectedEq.defaultDeposit || 50) * quantity}
-              onChange={(e) => setDeposit(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-bold text-amber-700"
-            />
-          </div>
         </div>
 
         {/* Total Summary */}
@@ -210,12 +202,6 @@ export const RentEquipmentModal: React.FC = () => {
             </span>
           </div>
 
-          <div className="text-right">
-            <span className="text-slate-400 block text-[11px]">Security Deposit</span>
-            <span className="text-sm font-bold text-white">
-              {formatCurrency(securityDeposit)}
-            </span>
-          </div>
         </div>
 
         <div>

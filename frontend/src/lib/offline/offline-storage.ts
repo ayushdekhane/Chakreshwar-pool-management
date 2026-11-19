@@ -5,7 +5,7 @@ import {
   LocalSession,
   LocalPayment,
   LocalCostumeRental,
-  LocalRentalEquipment,
+  LocalEquipment,
   StorageStats,
 } from './sync-types';
 import {
@@ -13,7 +13,7 @@ import {
   DbSession,
   DbPayment,
   DbCostumeRental,
-  DbRentalEquipment,
+  DbEquipment,
 } from '../../types/database';
 
 export const offlineStorage = {
@@ -25,14 +25,14 @@ export const offlineStorage = {
     sessions: LocalSession[];
     payments: LocalPayment[];
     rentals: LocalCostumeRental[];
-    equipment: LocalRentalEquipment[];
+    equipment: LocalEquipment[];
   }> {
     const [customers, sessions, payments, rentals, equipment] = await Promise.all([
       offlineDb.customers.toArray(),
       offlineDb.sessions.toArray(),
       offlineDb.payments.toArray(),
       offlineDb.costume_rentals.toArray(),
-      offlineDb.rental_equipment.toArray(),
+      offlineDb.equipment.toArray(),
     ]);
 
     return { customers, sessions, payments, rentals, equipment };
@@ -47,7 +47,7 @@ export const offlineStorage = {
     sessions: DbSession[];
     payments: DbPayment[];
     rentals: DbCostumeRental[];
-    equipment: DbRentalEquipment[];
+    equipment: DbEquipment[];
   }): Promise<void> {
     const pendingItems = await syncQueue.getProcessableItems();
     const pendingCustomerIds = new Set(
@@ -62,6 +62,16 @@ export const offlineStorage = {
     const pendingRentalIds = new Set(
       pendingItems.filter((i) => i.entityType === 'rental').map((i) => i.entityId)
     );
+    const pendingEquipmentIds = new Set(
+      pendingItems
+        .filter((i) => i.entityType === 'equipment' && i.operation === 'update')
+        .map((i) => i.entityId)
+    );
+    const pendingEquipmentDeleteIds = new Set(
+      pendingItems
+        .filter((i) => i.entityType === 'equipment' && i.operation === 'delete')
+        .map((i) => i.entityId)
+    );
 
     const now = new Date().toISOString();
 
@@ -72,7 +82,7 @@ export const offlineStorage = {
         offlineDb.sessions,
         offlineDb.payments,
         offlineDb.costume_rentals,
-        offlineDb.rental_equipment,
+        offlineDb.equipment,
       ],
       async () => {
         // 1. Customers
@@ -127,11 +137,23 @@ export const offlineStorage = {
         }
 
         // 5. Equipment
+        const remoteEquipmentIds = new Set(data.equipment.map((item) => item.id));
+        const cachedEquipment = await offlineDb.equipment.toArray();
+        for (const item of cachedEquipment) {
+          if (
+            pendingEquipmentDeleteIds.has(item.id) ||
+            (!remoteEquipmentIds.has(item.id) && !pendingEquipmentIds.has(item.id))
+          ) {
+            await offlineDb.equipment.delete(item.id);
+          }
+        }
         for (const eq of data.equipment) {
-          await offlineDb.rental_equipment.put({
-            ...eq,
-            _lastSyncedAt: now,
-          });
+          if (!pendingEquipmentIds.has(eq.id)) {
+            await offlineDb.equipment.put({
+              ...eq,
+              _lastSyncedAt: now,
+            });
+          }
         }
       }
     );
@@ -165,6 +187,17 @@ export const offlineStorage = {
     await offlineDb.costume_rentals.put(rental);
   },
 
+  async saveLocalEquipment(equipment: DbEquipment): Promise<void> {
+    await offlineDb.equipment.put({
+      ...equipment,
+      _lastSyncedAt: new Date().toISOString(),
+    });
+  },
+
+  async deleteLocalEquipment(id: string): Promise<void> {
+    await offlineDb.equipment.delete(id);
+  },
+
   /**
    * Gather comprehensive storage statistics
    */
@@ -184,7 +217,7 @@ export const offlineStorage = {
         offlineDb.sessions.count(),
         offlineDb.payments.count(),
         offlineDb.costume_rentals.count(),
-        offlineDb.rental_equipment.count(),
+        offlineDb.equipment.count(),
         syncQueue.getCounts(),
         offlineDb.sync_metadata.get('last_successful_sync'),
       ]);

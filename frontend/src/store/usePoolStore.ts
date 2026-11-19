@@ -17,7 +17,7 @@ import {
   DbSession,
   DbPayment,
   DbCostumeRental,
-  DbRentalEquipment,
+  DbEquipment,
   DbPaymentMethod,
 } from '../types/database';
 import {
@@ -27,7 +27,7 @@ import {
   initialCustomers,
   generateInitialDemonstrationData,
 } from '../data/mockData';
-import { calculateTimeRemaining, playAlertSound, isValidUuid } from '../utils';
+import { calculateTimeRemaining, calculateOvertimePenalty, playAlertSound, isValidUuid } from '../utils';
 import { customerService } from '../services/customerService';
 import { sessionService } from '../services/sessionService';
 import { paymentService } from '../services/paymentService';
@@ -35,11 +35,13 @@ import { rentalService } from '../services/rentalService';
 import { equipmentService } from '../services/equipmentService';
 import { packageService } from '../services/packageService';
 import { authService } from '../services/authService';
+import { settingsService } from '../services/settingsService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { offlineStorage } from '../lib/offline/offline-storage';
 import { syncQueue } from '../lib/offline/sync-queue';
 import { syncEngine } from '../lib/offline/sync-engine';
 import { connectivity } from '../lib/offline/connectivity';
+import { offlineDb } from '../lib/offline/database';
 import { toast } from 'sonner';
 
 interface PoolStore {
@@ -114,10 +116,10 @@ interface PoolStore {
     paymentRef?: string;
     rentals?: {
       equipmentId: string;
+      transactionType?: 'rental' | 'sale';
       size?: string;
       quantity: number;
       pricePerItem: number;
-      deposit: number;
     }[];
   }) => Promise<Session>;
 
@@ -134,10 +136,10 @@ interface PoolStore {
     notes?: string;
     rentals?: {
       equipmentId: string;
+      transactionType?: 'rental' | 'sale';
       size?: string;
       quantity: number;
       pricePerItem: number;
-      securityDeposit: number;
     }[];
   }) => Promise<Session>;
 
@@ -182,7 +184,6 @@ interface PoolStore {
     size?: string;
     quantity: number;
     pricePerItem: number;
-    securityDeposit: number;
     notes?: string;
   }) => Promise<RentalItem>;
 
@@ -198,11 +199,21 @@ interface PoolStore {
   updatePackage: (id: string, pkg: Partial<Package>) => Promise<void>;
   togglePackageActive: (id: string) => Promise<void>;
   archivePackage: (id: string) => Promise<void>;
+  addEquipment: (equipment: Omit<Equipment, 'id'>) => Promise<void>;
+  deleteEquipment: (id: string) => Promise<void>;
   updateEquipment: (
     id: string,
     updates: Pick<
       Equipment,
-      'name' | 'totalStock' | 'availableStock' | 'defaultRate' | 'defaultDeposit'
+      | 'name'
+      | 'equipmentType'
+      | 'totalStock'
+      | 'availableStock'
+      | 'defaultRate'
+      | 'defaultDeposit'
+      | 'sizes'
+      | 'availableForSale'
+      | 'saleRate'
     >
   ) => Promise<void>;
 
@@ -210,7 +221,7 @@ interface PoolStore {
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'totalVisits'>) => Promise<Customer>;
 
   // Settings & Demo Reset
-  updateSettings: (newSettings: Partial<Settings>) => void;
+  updateSettings: (newSettings: Partial<Settings>) => Promise<void>;
   resetDemonstrationData: () => void;
   clearDemonstrationData: () => void;
 }
@@ -225,11 +236,13 @@ function mapFrontendPaymentMethod(method: PaymentMethod): DbPaymentMethod {
   return 'other';
 }
 
-function toEquipment(row: DbRentalEquipment): Equipment {
+function toEquipment(row: DbEquipment): Equipment {
   return {
     id: row.id,
     name: row.name,
-    category: row.category,
+    equipmentType: row.equipment_type ?? 'rental',
+    availableForSale: row.available_for_sale ?? row.equipment_type === 'sale',
+    saleRate: Number(row.sale_rate ?? row.default_rate),
     sizes: row.sizes,
     defaultRate: Number(row.default_rate),
     defaultDeposit: Number(row.default_deposit),
@@ -238,11 +251,13 @@ function toEquipment(row: DbRentalEquipment): Equipment {
   };
 }
 
-function toDbRentalEquipment(item: Equipment): DbRentalEquipment {
+function toDbEquipment(item: Equipment): DbEquipment {
   return {
     id: item.id,
     name: item.name,
-    category: item.category,
+    equipment_type: item.equipmentType,
+    available_for_sale: item.availableForSale ?? item.equipmentType === 'sale',
+    sale_rate: item.saleRate ?? item.defaultRate,
     sizes: item.sizes,
     default_rate: item.defaultRate,
     default_deposit: item.defaultDeposit,
@@ -252,11 +267,48 @@ function toDbRentalEquipment(item: Equipment): DbRentalEquipment {
   };
 }
 
+async function persistEquipmentStock(
+  equipment: Equipment,
+  availableStock: number,
+  totalStock = equipment.totalStock,
+  explicitQuantityDelta?: number
+) {
+  const updatedEquipment = { ...equipment, availableStock, totalStock };
+  const payload = toDbEquipment(updatedEquipment);
+  const quantityDelta = explicitQuantityDelta ?? availableStock - equipment.availableStock;
+
+  if (isSupabaseConfigured && connectivity.isOnline()) {
+    try {
+      const serverAvailableStock = await equipmentService.adjustAvailableStock(equipment.id, quantityDelta);
+      updatedEquipment.availableStock = serverAvailableStock;
+      payload.available_stock = serverAvailableStock;
+    } catch (error) {
+      console.warn(`Online stock update failed for ${equipment.name}; queuing it for sync:`, error);
+      await syncQueue.enqueue({
+        entityType: 'equipment',
+        entityId: equipment.id,
+        operation: 'update',
+        payload: { available_stock_delta: quantityDelta },
+      });
+    }
+  } else if (isSupabaseConfigured) {
+    await syncQueue.enqueue({
+      entityType: 'equipment',
+      entityId: equipment.id,
+      operation: 'update',
+      payload: { available_stock_delta: quantityDelta },
+    });
+  }
+
+  await offlineStorage.saveLocalEquipment(payload);
+}
+
 function transformDbData(
   dbSessions: DbSession[],
   dbPayments: DbPayment[],
   dbRentals: DbCostumeRental[],
-  dbCustomers: DbCustomer[]
+  dbCustomers: DbCustomer[],
+  dbEquipment: DbEquipment[] = []
 ) {
   const customerVisitMap = new Map<string, number>();
   dbSessions.forEach((s) => {
@@ -299,19 +351,30 @@ function transformDbData(
 
     return {
       id: r.id,
-      sessionId: r.session_id,
+      sessionId: r.session_id || undefined,
       customerId: sess?.customer_id,
-      customerName: cust?.name || 'Pool Guest',
-      equipmentId:
-        initialEquipment.find((item) => item.name === r.item_name)?.id || 'eq-costume-men',
+      customerName: r.customer_name || cust?.name || 'Pool Guest',
+      equipmentId: r.equipment_id
+        || dbEquipment.find((item) => item.name === r.item_name)?.id
+        || initialEquipment.find((item) => item.name === r.item_name)?.id
+        || 'eq-costume-men',
       equipmentName: r.item_name,
+      equipmentType: r.equipment_type ?? 'rental',
+      size: r.size || undefined,
       quantity: r.quantity,
       returnedQuantity: r.returned_quantity,
       pricePerItem: Number(r.rental_charge) / Math.max(1, r.quantity),
       totalRentalAmount: Number(r.rental_charge),
-      securityDeposit: 50 * r.quantity,
+      securityDeposit: 0,
       issueTimestamp: r.created_at,
-      status: isReturned ? 'returned' : isPartial ? 'partial_returned' : 'active',
+      status:
+        r.equipment_type === 'sale'
+          ? 'sold'
+          : isReturned
+            ? 'returned'
+            : isPartial
+              ? 'partial_returned'
+              : 'active',
     };
   });
 
@@ -332,7 +395,8 @@ function transformDbData(
     const paidSum = sessionPayments.reduce((sum, p) => sum + p.amount, 0);
     const rentalCharges = sessionRentals.reduce((sum, r) => sum + r.totalRentalAmount, 0);
     const swimmingCharges = Number(s.session_amount);
-    const totalCharges = swimmingCharges + rentalCharges;
+    const penaltyCharges = Number(s.penalty_charge ?? 0);
+    const totalCharges = swimmingCharges + rentalCharges + penaltyCharges;
     const outstanding = Math.max(0, totalCharges - paidSum);
 
     const isGroup = Boolean(s.group_code);
@@ -356,6 +420,10 @@ function transformDbData(
       swimmingCharges,
       extensionCharges: 0,
       rentalCharges,
+      penaltyCharges,
+      penaltyApplied: s.penalty_applied ?? false,
+      penaltyMinutes: s.penalty_minutes ?? 0,
+      penaltyIntervals: s.penalty_intervals ?? 0,
       totalCharges,
       paidAmount: paidSum,
       outstandingBalance: outstanding,
@@ -417,12 +485,22 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   initializeOfflineData: async () => {
     try {
       const offline = await offlineStorage.hydrateOfflineData();
-      if (offline.customers.length > 0 || offline.sessions.length > 0) {
+      const cachedSettings = await offlineDb.sync_metadata.get('app_settings');
+      if (cachedSettings?.value) {
+        set({ settings: cachedSettings.value as Settings });
+      }
+      if (
+        offline.customers.length > 0 ||
+        offline.sessions.length > 0 ||
+        offline.payments.length > 0 ||
+        offline.rentals.length > 0
+      ) {
         const transformed = transformDbData(
           offline.sessions,
           offline.payments,
           offline.rentals,
-          offline.customers
+          offline.customers,
+          offline.equipment
         );
 
         set({
@@ -430,11 +508,10 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
           sessions: transformed.sessions,
           payments: transformed.payments,
           rentals: transformed.rentals,
-          equipment:
-            offline.equipment.length > 0
-              ? offline.equipment.map(toEquipment)
-              : get().equipment,
         });
+      }
+      if (offline.equipment.length > 0) {
+        set({ equipment: offline.equipment.map(toEquipment) });
       }
     } catch (err: any) {
       console.warn('[OfflineHydration] Could not hydrate from IndexedDB:', err.message);
@@ -463,20 +540,48 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     set({ isLoadingData: true });
     try {
-      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment, packages] = await Promise.all([
+      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment, packages, remoteSettings] = await Promise.all([
         customerService.getCustomers(),
         sessionService.getSessions(),
         paymentService.getPayments(),
         rentalService.getAllRentals(),
         equipmentService.getAll(),
         packageService.getAll(),
+        settingsService.get(),
       ]);
+
+      const [pendingItems, offlineSnapshot] = await Promise.all([
+        syncQueue.getProcessableItems(),
+        offlineStorage.hydrateOfflineData(),
+      ]);
+      const pendingEquipmentIds = new Set(
+        pendingItems
+          .filter((item) => item.entityType === 'equipment' && item.operation === 'update')
+          .map((item) => item.entityId)
+      );
+      const pendingEquipmentDeleteIds = new Set(
+        pendingItems
+          .filter((item) => item.entityType === 'equipment' && item.operation === 'delete')
+          .map((item) => item.entityId)
+      );
+      const hasPendingSettingsUpdate = pendingItems.some(
+        (item) => item.entityType === 'settings' && item.operation === 'update'
+      );
+      const equipmentById = new Map(equipment.map((item) => [item.id, item]));
+      offlineSnapshot.equipment.forEach((item) => {
+        if (pendingEquipmentIds.has(item.id)) {
+          equipmentById.set(item.id, toEquipment(item));
+        }
+      });
+      pendingEquipmentDeleteIds.forEach((id) => equipmentById.delete(id));
+      const resolvedEquipment = Array.from(equipmentById.values());
 
       const transformed = transformDbData(
         dbSessions,
         dbPayments,
         dbRentals,
-        dbCustomers
+        dbCustomers,
+        resolvedEquipment.map(toDbEquipment)
       );
 
       // Persist snapshot to IndexedDB
@@ -485,7 +590,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         sessions: dbSessions,
         payments: dbPayments,
         rentals: dbRentals,
-        equipment: equipment.map(toDbRentalEquipment),
+        equipment: resolvedEquipment.map(toDbEquipment),
       });
 
       set({
@@ -493,10 +598,19 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         sessions: transformed.sessions,
         payments: transformed.payments,
         rentals: transformed.rentals,
-        equipment,
+        equipment: resolvedEquipment,
         packages,
+        ...(remoteSettings && !hasPendingSettingsUpdate ? { settings: remoteSettings } : {}),
         isSupabaseLive: true,
       });
+
+      if (remoteSettings && !hasPendingSettingsUpdate) {
+        await offlineDb.sync_metadata.put({
+          key: 'app_settings',
+          value: remoteSettings,
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
       // Synchronize any pending offline mutations
       syncEngine.syncNow().catch((e) => console.warn('Background sync error:', e));
@@ -694,6 +808,13 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       if (!item) {
         throw new Error(`Selected accessory "${rental.equipmentId}" is not available.`);
       }
+      const transactionType = rental.transactionType || item.equipmentType;
+      if (
+        transactionType === 'rental' && item.equipmentType !== 'rental' ||
+        transactionType === 'sale' && item.equipmentType !== 'sale' && !item.availableForSale
+      ) {
+        throw new Error(`${item.name} is not available for ${transactionType === 'sale' ? 'sale' : 'rental'}.`);
+      }
       if (
         !Number.isInteger(rental.quantity) ||
         rental.quantity < 1 ||
@@ -706,10 +827,23 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       }
       return {
         ...rental,
-        pricePerItem: item.defaultRate,
-        deposit: item.defaultDeposit * rental.quantity,
+        transactionType,
+        pricePerItem: transactionType === 'sale'
+          ? item.saleRate ?? item.defaultRate
+          : item.defaultRate,
         item,
       };
+    });
+
+    const quantityByEquipment = selectedRentals.reduce<Record<string, number>>((totals, rental) => {
+      totals[rental.equipmentId] = (totals[rental.equipmentId] || 0) + rental.quantity;
+      return totals;
+    }, {});
+    Object.entries(quantityByEquipment).forEach(([equipmentId, quantity]) => {
+      const item = equipment.find((candidate) => candidate.id === equipmentId);
+      if (item && quantity > item.availableStock) {
+        throw new Error(`Combined rental and sale quantity for ${item.name} exceeds available stock.`);
+      }
     });
 
     const cust = await get().addCustomer({
@@ -783,6 +917,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     // Rentals
     const sessionRentals: RentalItem[] = [];
+    const stockAfterIssuance = new Map<string, { available: number; total: number }>();
     for (const rental of selectedRentals) {
       const totalRental = rental.pricePerItem * rental.quantity;
       let rentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -792,15 +927,14 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         try {
           const dbRental = await rentalService.addRental({
             session_id: sessionId,
+            equipment_id: rental.item.id,
             item_name: rental.item.name,
+            size: rental.size,
+            equipment_type: rental.transactionType,
             quantity: rental.quantity,
             rental_charge: totalRental,
           });
           rentalId = dbRental.id;
-          await equipmentService.updateAvailableStock(
-            rental.item.id,
-            rental.item.availableStock - rental.quantity
-          );
           await offlineStorage.saveLocalRental({
             ...dbRental,
             _syncStatus: 'synced',
@@ -818,7 +952,10 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         await offlineStorage.saveLocalRental({
           id: rentalId,
           session_id: sessionId,
+          equipment_id: rental.item.id,
           item_name: rental.item.name,
+          size: rental.size,
+          equipment_type: rental.transactionType,
           quantity: rental.quantity,
           returned_quantity: 0,
           rental_charge: totalRental,
@@ -834,13 +971,32 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
           payload: {
             id: rentalId,
             session_id: sessionId,
+            equipment_id: rental.item.id,
             item_name: rental.item.name,
+            size: rental.size,
+            equipment_type: rental.transactionType,
             quantity: rental.quantity,
             rental_charge: totalRental,
           },
           dependencyId: sessionId,
         });
       }
+
+      const currentStock = stockAfterIssuance.get(rental.item.id) || {
+        available: rental.item.availableStock,
+        total: rental.item.totalStock,
+      };
+      const nextStock = {
+        available: currentStock.available - rental.quantity,
+        total: currentStock.total,
+      };
+      stockAfterIssuance.set(rental.item.id, nextStock);
+      await persistEquipmentStock(
+        rental.item,
+        nextStock.available,
+        nextStock.total,
+        -rental.quantity
+      );
 
       sessionRentals.push({
         id: rentalId,
@@ -849,14 +1005,15 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         customerName: cust.name,
         equipmentId: rental.item.id,
         equipmentName: rental.item.name,
-        size: rental.size || 'Standard',
+        equipmentType: rental.transactionType,
+        size: rental.size,
         quantity: rental.quantity,
         returnedQuantity: 0,
         pricePerItem: rental.pricePerItem,
         totalRentalAmount: totalRental,
-        securityDeposit: rental.deposit,
+        securityDeposit: 0,
         issueTimestamp: now.toISOString(),
-        status: 'active',
+        status: rental.transactionType === 'sale' ? 'sold' : 'active',
       });
     }
 
@@ -1012,6 +1169,13 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       if (!item) {
         throw new Error(`Selected accessory "${rental.equipmentId}" is not available.`);
       }
+      const transactionType = rental.transactionType || item.equipmentType;
+      if (
+        transactionType === 'rental' && item.equipmentType !== 'rental' ||
+        transactionType === 'sale' && item.equipmentType !== 'sale' && !item.availableForSale
+      ) {
+        throw new Error(`${item.name} is not available for ${transactionType === 'sale' ? 'sale' : 'rental'}.`);
+      }
       if (
         !Number.isInteger(rental.quantity) ||
         rental.quantity < 1 ||
@@ -1024,10 +1188,23 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       }
       return {
         ...rental,
-        pricePerItem: item.defaultRate,
-        securityDeposit: item.defaultDeposit * rental.quantity,
+        transactionType,
+        pricePerItem: transactionType === 'sale'
+          ? item.saleRate ?? item.defaultRate
+          : item.defaultRate,
         item,
       };
+    });
+
+    const quantityByEquipment = selectedRentals.reduce<Record<string, number>>((totals, rental) => {
+      totals[rental.equipmentId] = (totals[rental.equipmentId] || 0) + rental.quantity;
+      return totals;
+    }, {});
+    Object.entries(quantityByEquipment).forEach(([equipmentId, quantity]) => {
+      const item = equipment.find((candidate) => candidate.id === equipmentId);
+      if (item && quantity > item.availableStock) {
+        throw new Error(`Combined rental and sale quantity for ${item.name} exceeds available stock.`);
+      }
     });
 
     const rentalCharge = selectedRentals.reduce(
@@ -1103,6 +1280,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }
 
     const groupRentals: RentalItem[] = [];
+    const stockAfterIssuance = new Map<string, { available: number; total: number }>();
     for (const rental of selectedRentals) {
       const totalRentalAmount = rental.pricePerItem * rental.quantity;
       let rentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -1112,15 +1290,14 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         try {
           const dbRental = await rentalService.addRental({
             session_id: sessionId,
+            equipment_id: rental.item.id,
             item_name: rental.item.name,
+            size: rental.size,
+            equipment_type: rental.transactionType,
             quantity: rental.quantity,
             rental_charge: totalRentalAmount,
           });
           rentalId = dbRental.id;
-          await equipmentService.updateAvailableStock(
-            rental.item.id,
-            rental.item.availableStock - rental.quantity
-          );
           await offlineStorage.saveLocalRental({
             ...dbRental,
             _syncStatus: 'synced',
@@ -1138,7 +1315,10 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         await offlineStorage.saveLocalRental({
           id: rentalId,
           session_id: sessionId,
+          equipment_id: rental.item.id,
           item_name: rental.item.name,
+          size: rental.size,
+          equipment_type: rental.transactionType,
           quantity: rental.quantity,
           returned_quantity: 0,
           rental_charge: totalRentalAmount,
@@ -1154,13 +1334,32 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
           payload: {
             id: rentalId,
             session_id: sessionId,
+            equipment_id: rental.item.id,
             item_name: rental.item.name,
+            size: rental.size,
+            equipment_type: rental.transactionType,
             quantity: rental.quantity,
             rental_charge: totalRentalAmount,
           },
           dependencyId: sessionId,
         });
       }
+
+      const currentStock = stockAfterIssuance.get(rental.item.id) || {
+        available: rental.item.availableStock,
+        total: rental.item.totalStock,
+      };
+      const nextStock = {
+        available: currentStock.available - rental.quantity,
+        total: currentStock.total,
+      };
+      stockAfterIssuance.set(rental.item.id, nextStock);
+      await persistEquipmentStock(
+        rental.item,
+        nextStock.available,
+        nextStock.total,
+        -rental.quantity
+      );
 
       groupRentals.push({
         id: rentalId,
@@ -1169,14 +1368,15 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         customerName: data.leaderName,
         equipmentId: rental.item.id,
         equipmentName: rental.item.name,
-        size: rental.size || rental.item.sizes[0] || 'Standard',
+        equipmentType: rental.transactionType,
+        size: rental.size || rental.item.sizes[0],
         quantity: rental.quantity,
         returnedQuantity: 0,
         pricePerItem: rental.pricePerItem,
         totalRentalAmount,
-        securityDeposit: rental.securityDeposit,
+        securityDeposit: 0,
         issueTimestamp: now.toISOString(),
-        status: 'active',
+        status: rental.transactionType === 'sale' ? 'sold' : 'active',
       });
     }
 
@@ -1411,10 +1611,82 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   },
 
   checkoutAndPaySession: async ({ sessionId, amount, method, referenceNumber, notes }) => {
-    const session = get().sessions.find((s) => s.id === sessionId);
+    let session = get().sessions.find((s) => s.id === sessionId);
     if (!session) return;
 
     const now = new Date().toISOString();
+    const overtimeMinutes = Math.max(
+      0,
+      Math.floor((Date.now() - new Date(session.scheduledExitTime).getTime()) / 60000)
+    );
+    const penaltyEnabled = get().settings.penaltyEnabled !== false;
+    const penaltyInterval = Math.max(1, get().settings.penaltyAfterMinutes || 1);
+    const penaltyAmount = Math.max(0, get().settings.penaltyAmount || 0);
+    const penaltyCalculation = calculateOvertimePenalty(
+      overtimeMinutes,
+      penaltyInterval,
+      penaltyAmount
+    );
+    const shouldApplyPenalty =
+      penaltyEnabled &&
+      !session.penaltyApplied &&
+      penaltyCalculation.intervals > 0 &&
+      penaltyCalculation.charge > 0;
+
+    if (shouldApplyPenalty) {
+      const penaltyCharges = penaltyCalculation.charge;
+      const newTotalCharges = session.totalCharges + penaltyCharges;
+      const penaltyUpdate = {
+        penalty_charge: penaltyCharges,
+        penalty_applied: true,
+        penalty_minutes: overtimeMinutes,
+        penalty_intervals: penaltyCalculation.intervals,
+      };
+
+      if (isValidUuid(sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+        try {
+          await sessionService.updateSession(sessionId, penaltyUpdate);
+        } catch (error) {
+          await syncQueue.enqueue({
+            entityType: 'session',
+            entityId: sessionId,
+            operation: 'update',
+            payload: penaltyUpdate,
+          });
+        }
+      } else {
+        await syncQueue.enqueue({
+          entityType: 'session',
+          entityId: sessionId,
+          operation: 'update',
+          payload: penaltyUpdate,
+        });
+      }
+
+      set((state) => ({
+        sessions: state.sessions.map((item) =>
+          item.id === sessionId
+            ? {
+                ...item,
+                penaltyCharges,
+                penaltyApplied: true,
+                penaltyMinutes: overtimeMinutes,
+                penaltyIntervals: penaltyCalculation.intervals,
+                totalCharges: newTotalCharges,
+                outstandingBalance: Math.max(0, newTotalCharges - item.paidAmount),
+                paymentStatus:
+                  item.paidAmount >= newTotalCharges
+                    ? ('paid' as const)
+                    : item.paidAmount > 0
+                      ? ('partial' as const)
+                      : ('unpaid' as const),
+              }
+            : item
+        ),
+      }));
+
+      session = get().sessions.find((item) => item.id === sessionId) || session;
+    }
 
     // 1. Record exit payment if amount > 0
     if (amount > 0) {
@@ -1664,6 +1936,9 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const now = new Date();
     const eq = get().equipment.find((e) => e.id === data.equipmentId);
     if (!eq) throw new Error('Selected accessory is not available.');
+    if (eq.equipmentType !== 'rental') {
+      throw new Error('Only rental equipment can be issued through the rental desk.');
+    }
     if (!Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > eq.availableStock) {
       throw new Error(`Requested quantity for ${eq.name} exceeds available stock.`);
     }
@@ -1672,19 +1947,29 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     let dbRentalId = crypto.randomUUID ? crypto.randomUUID() : `rnt-${Date.now()}`;
     let isOfflineRental = false;
 
-    if (data.sessionId && isValidUuid(data.sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+    if (
+      (!data.sessionId || isValidUuid(data.sessionId)) &&
+      isSupabaseConfigured &&
+      connectivity.isOnline()
+    ) {
       try {
         const dbRental = await rentalService.addRental({
           session_id: data.sessionId,
+          equipment_id: eq.id,
           item_name: eq?.name || data.equipmentId,
+          customer_name: data.customerName,
+          size: data.size,
+          equipment_type: 'rental',
           quantity: data.quantity,
           rental_charge: totalAmount,
         });
         dbRentalId = dbRental.id;
-        await equipmentService.updateAvailableStock(
-          eq.id,
-          eq.availableStock - data.quantity
-        );
+        await offlineStorage.saveLocalRental({
+          ...dbRental,
+          _syncStatus: 'synced',
+          _localOnly: false,
+          _lastSyncedAt: now.toISOString(),
+        });
       } catch {
         isOfflineRental = true;
       }
@@ -1692,21 +1977,40 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       isOfflineRental = true;
     }
 
-    if (isOfflineRental && data.sessionId) {
+    if (isOfflineRental) {
+      const rentalPayload = {
+        id: dbRentalId,
+        session_id: data.sessionId || null,
+        equipment_id: eq.id,
+        item_name: eq?.name || data.equipmentId,
+        customer_name: data.customerName,
+        size: data.size,
+        equipment_type: 'rental' as const,
+        quantity: data.quantity,
+        rental_charge: totalAmount,
+      };
+      await offlineStorage.saveLocalRental({
+        ...rentalPayload,
+        returned_quantity: 0,
+        created_at: now.toISOString(),
+        _syncStatus: 'pending',
+        _localOnly: true,
+      });
       await syncQueue.enqueue({
         entityType: 'rental',
         entityId: dbRentalId,
         operation: 'insert',
-        payload: {
-          id: dbRentalId,
-          session_id: data.sessionId,
-          item_name: eq?.name || data.equipmentId,
-          quantity: data.quantity,
-          rental_charge: totalAmount,
-        },
-        dependencyId: data.sessionId,
+        payload: rentalPayload,
+        dependencyId: data.sessionId || undefined,
       });
     }
+
+    await persistEquipmentStock(
+      eq,
+      eq.availableStock - data.quantity,
+      eq.totalStock,
+      -data.quantity
+    );
 
     const newRental: RentalItem = {
       id: dbRentalId,
@@ -1715,12 +2019,13 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       customerName: data.customerName,
       equipmentId: data.equipmentId,
       equipmentName: eq?.name || 'Equipment',
-      size: data.size || 'Standard',
+      equipmentType: 'rental',
+      size: data.size,
       quantity: data.quantity,
       returnedQuantity: 0,
       pricePerItem: data.pricePerItem,
       totalRentalAmount: totalAmount,
-      securityDeposit: data.securityDeposit,
+      securityDeposit: 0,
       issueTimestamp: now.toISOString(),
       status: 'active',
       notes: data.notes,
@@ -1766,19 +2071,15 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const now = new Date();
     const currentRental = get().rentals.find((r) => r.id === rentalId);
     if (!currentRental) return;
+    if (currentRental.equipmentType === 'sale' || currentRental.status === 'sold') {
+      throw new Error('Sold equipment cannot be returned as a rental.');
+    }
 
     const newReturnedQty = currentRental.returnedQuantity + returnedQty;
 
     if (isValidUuid(rentalId) && isSupabaseConfigured && connectivity.isOnline()) {
       try {
         await rentalService.updateRentalReturn(rentalId, newReturnedQty);
-        const equipment = get().equipment.find((item) => item.id === currentRental.equipmentId);
-        if (equipment) {
-          await equipmentService.updateAvailableStock(
-            equipment.id,
-            Math.min(equipment.totalStock, equipment.availableStock + returnedQty)
-          );
-        }
       } catch (err: any) {
         console.warn('Online processReturn failed, queuing offline:', err.message);
         await syncQueue.enqueue({
@@ -1795,6 +2096,16 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         operation: 'update',
         payload: { returned_quantity: newReturnedQty },
       });
+    }
+
+    const equipment = get().equipment.find((item) => item.id === currentRental.equipmentId);
+    if (equipment) {
+      await persistEquipmentStock(
+        equipment,
+        Math.min(equipment.totalStock, equipment.availableStock + returnedQty),
+        equipment.totalStock,
+        returnedQty
+      );
     }
 
     set((state) => {
@@ -1923,6 +2234,118 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }));
   },
 
+  addEquipment: async (equipmentData) => {
+    const equipment: Equipment = {
+      ...equipmentData,
+      id: crypto.randomUUID(),
+      name: equipmentData.name.trim(),
+      availableForSale: equipmentData.availableForSale ?? equipmentData.equipmentType === 'sale',
+      saleRate: equipmentData.saleRate ?? equipmentData.defaultRate,
+      defaultDeposit: 0,
+    };
+
+    if (
+      !equipment.name ||
+      !Number.isInteger(equipment.totalStock) ||
+      !Number.isInteger(equipment.availableStock) ||
+      equipment.totalStock < 0 ||
+      equipment.availableStock < 0 ||
+      equipment.availableStock > equipment.totalStock ||
+      !Number.isFinite(equipment.defaultRate) ||
+      equipment.defaultRate < 0 ||
+      !Number.isFinite(equipment.saleRate) ||
+      (equipment.saleRate ?? 0) < 0 ||
+      !Array.isArray(equipment.sizes)
+    ) {
+      throw new Error('Enter a valid name, stock, price, and available sizes.');
+    }
+
+    const payload = toDbEquipment(equipment);
+    if (isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await equipmentService.save(equipment);
+      } catch (error) {
+        if (connectivity.isOnline()) throw error;
+        await syncQueue.enqueue({
+          entityType: 'equipment',
+          entityId: equipment.id,
+          operation: 'update',
+          payload,
+        });
+      }
+    } else {
+      await syncQueue.enqueue({
+        entityType: 'equipment',
+        entityId: equipment.id,
+        operation: 'update',
+        payload,
+      });
+    }
+
+    await offlineStorage.saveLocalEquipment(payload);
+    set((state) => ({ equipment: [...state.equipment, equipment] }));
+  },
+
+  deleteEquipment: async (id) => {
+    const equipment = get().equipment.find((item) => item.id === id);
+    if (!equipment) throw new Error('Equipment item was not found.');
+
+    const hasPendingReturns = get().rentals.some(
+      (rental) =>
+        rental.equipmentId === id &&
+        rental.equipmentType !== 'sale' &&
+        rental.returnedQuantity < rental.quantity
+    );
+    if (hasPendingReturns) {
+      throw new Error('This equipment has outstanding rentals. Record the returns before deleting it.');
+    }
+
+    if (isSupabaseConfigured && connectivity.isOnline()) {
+      const pendingUpdates = await syncQueue.getProcessableItems();
+      const hasQueuedEquipmentMutation = pendingUpdates.some(
+        (item) => item.entityType === 'equipment' && item.entityId === id
+      );
+
+      if (hasQueuedEquipmentMutation) {
+        await syncQueue.enqueue({
+          entityType: 'equipment',
+          entityId: id,
+          operation: 'delete',
+          payload: {},
+        });
+        syncEngine.syncNow().catch((error) =>
+          console.warn(`Could not sync deletion for ${equipment.name}:`, error)
+        );
+      } else {
+        try {
+          await equipmentService.delete(id);
+        } catch (error) {
+          await syncQueue.enqueue({
+            entityType: 'equipment',
+            entityId: id,
+            operation: 'delete',
+            payload: {},
+          });
+          syncEngine.syncNow().catch((syncError) =>
+            console.warn(`Could not sync deletion for ${equipment.name}:`, syncError)
+          );
+        }
+      }
+    } else if (isSupabaseConfigured) {
+      await syncQueue.enqueue({
+        entityType: 'equipment',
+        entityId: id,
+        operation: 'delete',
+        payload: {},
+      });
+    }
+
+    await offlineStorage.deleteLocalEquipment(id);
+    set((state) => ({
+      equipment: state.equipment.filter((item) => item.id !== id),
+    }));
+  },
+
   updateEquipment: async (id, updates) => {
     if (
       !updates.name.trim() ||
@@ -1933,27 +2356,35 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       updates.availableStock > updates.totalStock ||
       !Number.isFinite(updates.defaultRate) ||
       updates.defaultRate < 0 ||
-      !Number.isFinite(updates.defaultDeposit) ||
-      updates.defaultDeposit < 0
+      !Number.isFinite(updates.saleRate) ||
+      (updates.saleRate ?? 0) < 0 ||
+      !Array.isArray(updates.sizes)
     ) {
-      throw new Error('Enter a valid item name, stock, rental fee, and security deposit.');
+      throw new Error('Enter a valid item name, stock, equipment price, and available sizes.');
     }
 
     const equipment = get().equipment.find((item) => item.id === id);
     if (!equipment) throw new Error('Equipment item was not found.');
 
-    const cleanEquipment = { ...equipment, ...updates, name: updates.name.trim() };
+    const cleanEquipment = {
+      ...equipment,
+      ...updates,
+      name: updates.name.trim(),
+      availableForSale: updates.equipmentType === 'sale' || updates.availableForSale,
+      saleRate: updates.saleRate ?? updates.defaultRate,
+      defaultDeposit: 0,
+    };
 
     if (isSupabaseConfigured && connectivity.isOnline()) {
       try {
         await equipmentService.save(cleanEquipment);
-      } catch (err: any) {
-        console.warn('Online equipment save failed, queuing offline:', err.message);
+      } catch (error) {
+        if (connectivity.isOnline()) throw error;
         await syncQueue.enqueue({
           entityType: 'equipment',
           entityId: id,
           operation: 'update',
-          payload: toDbRentalEquipment(cleanEquipment),
+          payload: toDbEquipment(cleanEquipment),
         });
       }
     } else {
@@ -1961,10 +2392,11 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         entityType: 'equipment',
         entityId: id,
         operation: 'update',
-        payload: toDbRentalEquipment(cleanEquipment),
+        payload: toDbEquipment(cleanEquipment),
       });
     }
 
+    await offlineStorage.saveLocalEquipment(toDbEquipment(cleanEquipment));
     set((state) => ({
       equipment: state.equipment.map((item) =>
         item.id === id ? cleanEquipment : item
@@ -1972,10 +2404,37 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }));
   },
 
-  updateSettings: (newSettings) =>
-    set((state) => ({
-      settings: { ...state.settings, ...newSettings },
-    })),
+  updateSettings: async (newSettings) => {
+    const mergedSettings = { ...get().settings, ...newSettings };
+
+    set({ settings: mergedSettings });
+    await offlineDb.sync_metadata.put({
+      key: 'app_settings',
+      value: mergedSettings,
+      updatedAt: new Date().toISOString(),
+    });
+
+    if (isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await settingsService.save(mergedSettings);
+      } catch (error) {
+        await syncQueue.enqueue({
+          entityType: 'settings',
+          entityId: 'default',
+          operation: 'update',
+          payload: { settings: mergedSettings },
+        });
+        console.warn('Online settings update failed; queued for sync:', error);
+      }
+    } else if (isSupabaseConfigured) {
+      await syncQueue.enqueue({
+        entityType: 'settings',
+        entityId: 'default',
+        operation: 'update',
+        payload: { settings: mergedSettings },
+      });
+    }
+  },
 
   resetDemonstrationData: () => {
     const freshDemo = generateInitialDemonstrationData();

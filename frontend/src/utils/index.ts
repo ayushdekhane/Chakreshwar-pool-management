@@ -70,6 +70,22 @@ export function calculateTimeRemaining(scheduledExitTime: string): {
   };
 }
 
+export function calculateOvertimePenalty(
+  overtimeMinutes: number,
+  intervalMinutes: number,
+  penaltyAmount: number
+): { intervals: number; charge: number } {
+  const validOvertime = Math.max(0, Math.floor(overtimeMinutes));
+  const validInterval = Math.max(1, Math.floor(intervalMinutes));
+  const validAmount = Math.max(0, Number(penaltyAmount) || 0);
+  const intervals = Math.floor(validOvertime / validInterval);
+
+  return {
+    intervals,
+    charge: intervals * validAmount,
+  };
+}
+
 export function formatSecondsToHHMMSS(totalSeconds: number): string {
   const sec = Math.max(0, Math.floor(totalSeconds));
   const hours = Math.floor(sec / 3600);
@@ -209,5 +225,3 @@ export function isValidUuid(id: string | null | undefined): boolean {
   if (!id || typeof id !== 'string') return false;
   return UUID_REGEX.test(id.trim());
 }
-
-

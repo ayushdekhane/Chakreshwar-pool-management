@@ -108,7 +108,7 @@ export const StaffLoginModal: React.FC = () => {
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="email"
-                placeholder="staff@serenitysportsclub.com"
+                placeholder="staff@chakreshwarswimmingpool.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#087FA5]"
@@ -154,4 +154,3 @@ export const StaffLoginModal: React.FC = () => {
     </Modal>
   );
 };
-

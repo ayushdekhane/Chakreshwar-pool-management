@@ -3,7 +3,6 @@ import { toast } from 'sonner';
 import { Shirt, CheckCircle2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency, formatDateTime } from '../../utils';
 
 export const ReturnEquipmentModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -21,7 +20,9 @@ export const ReturnEquipmentModal: React.FC = () => {
     if (selectedRentalId) {
       setCurrentRentalId(selectedRentalId);
     } else {
-      const activeRental = rentals.find((r) => r.status !== 'returned');
+      const activeRental = rentals.find(
+        (r) => r.equipmentType !== 'sale' && r.status !== 'returned'
+      );
       if (activeRental) setCurrentRentalId(activeRental.id);
     }
   }, [selectedRentalId, rentals]);
@@ -36,7 +37,7 @@ export const ReturnEquipmentModal: React.FC = () => {
     }
   }, [currentRentalId, pendingQty, rental]);
 
-  if (!rental) return null;
+  if (!rental || rental.equipmentType === 'sale') return null;
 
   const actualReturnQty = returnType === 'full' ? pendingQty : returnedQty;
   const remainingAfterThisReturn = Math.max(0, pendingQty - actualReturnQty);
@@ -91,7 +92,7 @@ export const ReturnEquipmentModal: React.FC = () => {
             className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white"
           >
             {rentals
-              .filter((r) => r.status !== 'returned')
+              .filter((r) => r.equipmentType !== 'sale' && r.status !== 'returned')
               .map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.customerName} - {r.equipmentName} ({r.quantity - r.returnedQuantity} pending)
@@ -108,7 +109,7 @@ export const ReturnEquipmentModal: React.FC = () => {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Size:</span>
-            <span className="font-medium text-slate-700">{rental.size || 'Standard'}</span>
+            <span className="font-medium text-slate-700">{rental.size || 'Not applicable'}</span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-slate-500">Originally Issued:</span>
@@ -177,14 +178,6 @@ export const ReturnEquipmentModal: React.FC = () => {
             </p>
           </div>
         )}
-
-        {/* Deposit release notice */}
-        <div className="p-3 rounded-xl bg-slate-100 text-xs flex items-center justify-between">
-          <span className="text-slate-600">Security Deposit on file:</span>
-          <span className="font-bold text-emerald-800">
-            {formatCurrency(rental.securityDeposit)}
-          </span>
-        </div>
 
         <div>
           <label className="block text-xs font-semibold text-slate-700 mb-1">

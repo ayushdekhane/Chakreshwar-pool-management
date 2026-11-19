@@ -25,8 +25,7 @@ export const ExtendSessionModal: React.FC = () => {
 
   // Rate calculation
   const calculateRateForMinutes = (mins: number) => {
-    // ₹30 per 15 mins by default
-    return Math.round((mins / 15) * (settings.overtimeRatePer15Min || 30));
+    return 0;
   };
 
   const handleSelectMinutes = (mins: number) => {
@@ -209,4 +208,3 @@ export const ExtendSessionModal: React.FC = () => {
     </Modal>
   );
 };
-

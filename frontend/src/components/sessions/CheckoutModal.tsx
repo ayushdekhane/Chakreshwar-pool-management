@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency, formatTime } from '../../utils';
+import { calculateOvertimePenalty, formatCurrency, formatTime } from '../../utils';
 import { PaymentMethod } from '../../types';
 
 export const CheckoutModal: React.FC = () => {
@@ -21,8 +21,10 @@ export const CheckoutModal: React.FC = () => {
   const selectedSessionId = usePoolStore((state) => state.selectedSessionId);
   const closeModal = usePoolStore((state) => state.closeModal);
   const sessions = usePoolStore((state) => state.sessions);
+  const rentals = usePoolStore((state) => state.rentals);
   const checkoutAndPaySession = usePoolStore((state) => state.checkoutAndPaySession);
-  const completeSession = usePoolStore((state) => state.completeSession);
+  const processReturn = usePoolStore((state) => state.processReturn);
+  const settings = usePoolStore((state) => state.settings);
 
   const session = sessions.find((s) => s.id === selectedSessionId);
 
@@ -30,18 +32,72 @@ export const CheckoutModal: React.FC = () => {
   const [payAmount, setPayAmount] = useState<string>('');
   const [reference, setReference] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [returnedRentalIds, setReturnedRentalIds] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setReturnedRentalIds({});
+  }, [selectedSessionId]);
 
   useEffect(() => {
     if (session) {
-      setPayAmount(String(session.outstandingBalance));
+      const overtimeMinutes = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(session.scheduledExitTime).getTime()) / 60000)
+      );
+      const willApplyPenalty =
+        settings.penaltyEnabled &&
+        !session.penaltyApplied &&
+        overtimeMinutes >= (settings.penaltyAfterMinutes || 1);
+      const calculated = calculateOvertimePenalty(
+        overtimeMinutes,
+        settings.penaltyAfterMinutes || 1,
+        settings.penaltyAmount || 0
+      );
+      const penalty = willApplyPenalty ? calculated.charge : 0;
+      setPayAmount(String(session.outstandingBalance + penalty));
       setPaymentMethod('cash');
       setReference('');
     }
-  }, [session, selectedSessionId]);
+  }, [
+    session,
+    selectedSessionId,
+    settings.penaltyEnabled,
+    settings.penaltyAfterMinutes,
+    settings.penaltyAmount,
+  ]);
 
   if (!session) return null;
 
-  const hasPendingDue = session.outstandingBalance > 0;
+  const overtimeMinutes = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(session.scheduledExitTime).getTime()) / 60000)
+  );
+  const penaltyAmount =
+    settings.penaltyEnabled &&
+    !session.penaltyApplied &&
+    overtimeMinutes >= (settings.penaltyAfterMinutes || 1)
+      ? calculateOvertimePenalty(
+          overtimeMinutes,
+          settings.penaltyAfterMinutes || 1,
+          settings.penaltyAmount || 0
+        ).charge
+      : 0;
+  const effectiveOutstanding = session.outstandingBalance + penaltyAmount;
+  const hasPendingDue = effectiveOutstanding > 0;
+  const sessionRentals = session.rentals.length > 0
+    ? session.rentals
+    : rentals.filter((rental) => rental.sessionId === session.id);
+  const pendingRentals = sessionRentals.filter(
+    (rental) => rental.equipmentType !== 'sale' && rental.quantity > rental.returnedQuantity
+  );
+
+  const returnCheckedEquipment = async () => {
+    for (const rental of pendingRentals) {
+      if (returnedRentalIds[rental.id]) {
+        await processReturn(rental.id, rental.quantity - rental.returnedQuantity, 'Returned at session exit');
+      }
+    }
+  };
 
   const handleCollectAndExit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +106,7 @@ export const CheckoutModal: React.FC = () => {
       const parsedAmount = parseFloat(payAmount);
       const amountToCollect = isNaN(parsedAmount) ? 0 : Math.max(0, parsedAmount);
 
+      await returnCheckedEquipment();
       await checkoutAndPaySession({
         sessionId: session.id,
         amount: amountToCollect,
@@ -77,13 +134,19 @@ export const CheckoutModal: React.FC = () => {
   const handleExitWithoutPaying = async () => {
     if (
       window.confirm(
-        `Swimmer still owes ₹${session.outstandingBalance}!\n\nAre you sure you want to let them exit without collecting? The balance will remain unpaid on their record.`
+        `Swimmer still owes ₹${effectiveOutstanding}!\n\nAre you sure you want to let them exit without collecting? The balance will remain unpaid on their record.`
       )
     ) {
       setIsSubmitting(true);
       try {
-        await completeSession(session.id);
-        toast.warning(`Session #${session.id} completed with ₹${session.outstandingBalance} pending.`);
+        await returnCheckedEquipment();
+        await checkoutAndPaySession({
+          sessionId: session.id,
+          amount: 0,
+          method: 'cash',
+          notes: `Exit without payment for ${session.customerName}`,
+        });
+        toast.warning(`Session #${session.id} completed with ₹${effectiveOutstanding} pending.`);
         closeModal();
       } catch (err: any) {
         toast.error(err?.message || 'Failed to exit session.');
@@ -141,6 +204,13 @@ export const CheckoutModal: React.FC = () => {
               <span className="text-slate-500 text-[10px] block">Total Bill</span>
               <span className="font-bold text-slate-800">{formatCurrency(session.totalCharges)}</span>
             </div>
+            {penaltyAmount > 0 && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <span className="font-bold">Overtime penalty:</span>{' '}
+                {Math.floor(overtimeMinutes / (settings.penaltyAfterMinutes || 1))} intervals ·{' '}
+                {overtimeMinutes} minutes extra · {formatCurrency(penaltyAmount)}
+              </div>
+            )}
             <div>
               <span className="text-slate-500 text-[10px] block">Paid Advance</span>
               <span className="font-bold text-emerald-700">{formatCurrency(session.paidAmount)}</span>
@@ -152,11 +222,47 @@ export const CheckoutModal: React.FC = () => {
                   hasPendingDue ? 'text-[#E12C3D]' : 'text-slate-700'
                 }`}
               >
-                {formatCurrency(session.outstandingBalance)}
+                {formatCurrency(effectiveOutstanding)}
               </span>
             </div>
           </div>
         </div>
+
+        {pendingRentals.length > 0 && (
+          <section className="rounded-xl border border-slate-200 bg-white p-3.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Rental equipment return checklist
+            </h4>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Check each item the swimmer returns. Unchecked items remain outstanding.
+            </p>
+            <div className="mt-2 divide-y divide-slate-100">
+              {pendingRentals.map((rental) => (
+                <label key={rental.id} className="flex cursor-pointer items-center gap-2 py-2 text-xs">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={Boolean(returnedRentalIds[rental.id])}
+                    onChange={(event) =>
+                      setReturnedRentalIds((current) => ({
+                        ...current,
+                        [rental.id]: event.target.checked,
+                      }))
+                    }
+                    className="h-4 w-4 rounded border-slate-300 text-[#087FA5] focus:ring-[#087FA5]"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-slate-800">{rental.equipmentName}</span>
+                    {rental.size && <span className="text-slate-500"> · Size {rental.size}</span>}
+                  </span>
+                  <span className="shrink-0 text-slate-600">
+                    {rental.quantity - rental.returnedQuantity} pending
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Conditional Status Section: Due vs Settled */}
         {hasPendingDue ? (
@@ -168,7 +274,7 @@ export const CheckoutModal: React.FC = () => {
                 <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
                   Swimmer has an unpaid balance of{' '}
                   <span className="font-extrabold text-amber-950 underline">
-                    {formatCurrency(session.outstandingBalance)}
+                    {formatCurrency(effectiveOutstanding)}
                   </span>
                   . Please collect payment in Cash or Online before completing exit.
                 </p>
@@ -296,7 +402,7 @@ export const CheckoutModal: React.FC = () => {
               <CheckCircle2 className="w-4 h-4" />
               <span>
                 {hasPendingDue
-                  ? `Collect ${formatCurrency(Number(payAmount) || session.outstandingBalance)} & Complete Exit`
+                  ? `Collect ${formatCurrency(Number(payAmount) || effectiveOutstanding)} & Complete Exit`
                   : 'Confirm Pool Exit & Complete'}
               </span>
             </button>
@@ -306,4 +412,3 @@ export const CheckoutModal: React.FC = () => {
     </Modal>
   );
 };
-

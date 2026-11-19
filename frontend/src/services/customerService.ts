@@ -50,8 +50,9 @@ export const customerService = {
   },
 
   /**
-   * Register or retrieve existing customer in Supabase
-   * Checks for existing mobile number, reuses UUID if found, otherwise lets PostgreSQL generate a new UUID.
+   * Register a customer entry.
+   * A phone number may belong to multiple people, so each entry gets a
+   * separate customer identity and must not overwrite an existing name.
    */
   async addCustomer(data: { name: string; mobile: string }): Promise<DbCustomer> {
     if (!isSupabaseConfigured) {
@@ -68,13 +69,8 @@ export const customerService = {
       throw new Error('Customer name is required.');
     }
 
-    // 1. Check if customer with this mobile already exists
-    const existing = await customerService.getCustomerByMobile(cleanedMobile);
-    if (existing && isValidUuid(existing.id)) {
-      return existing;
-    }
-
-    // 2. Insert new customer without custom ID - PostgreSQL generates UUID via DEFAULT gen_random_uuid()
+    // Insert a separate customer record for every entry. Phone numbers are
+    // not customer identities, so a repeated number must not rewrite another name.
     const { data: newCustomer, error } = await supabase
       .from('customers')
       .insert({

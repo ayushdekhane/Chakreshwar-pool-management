@@ -155,6 +155,42 @@ export const offlineStorage = {
             });
           }
         }
+
+        // Remove stale cache records that are absent from the server snapshot.
+        // This prevents deleted database entries from reappearing after a refresh.
+        const remoteCustomerIds = new Set(data.customers.map((item) => item.id));
+        const remoteSessionIds = new Set(data.sessions.map((item) => item.id));
+        const remotePaymentIds = new Set(data.payments.map((item) => item.id));
+        const remoteRentalIds = new Set(data.rentals.map((item) => item.id));
+
+        const [cachedCustomers, cachedSessions, cachedPayments, cachedRentals] =
+          await Promise.all([
+            offlineDb.customers.toArray(),
+            offlineDb.sessions.toArray(),
+            offlineDb.payments.toArray(),
+            offlineDb.costume_rentals.toArray(),
+          ]);
+
+        await offlineDb.customers.bulkDelete(
+          cachedCustomers
+            .filter((item) => !remoteCustomerIds.has(item.id) && !pendingCustomerIds.has(item.id))
+            .map((item) => item.id)
+        );
+        await offlineDb.sessions.bulkDelete(
+          cachedSessions
+            .filter((item) => !remoteSessionIds.has(item.id) && !pendingSessionIds.has(item.id))
+            .map((item) => item.id)
+        );
+        await offlineDb.payments.bulkDelete(
+          cachedPayments
+            .filter((item) => !remotePaymentIds.has(item.id) && !pendingPaymentIds.has(item.id))
+            .map((item) => item.id)
+        );
+        await offlineDb.costume_rentals.bulkDelete(
+          cachedRentals
+            .filter((item) => !remoteRentalIds.has(item.id) && !pendingRentalIds.has(item.id))
+            .map((item) => item.id)
+        );
       }
     );
   },

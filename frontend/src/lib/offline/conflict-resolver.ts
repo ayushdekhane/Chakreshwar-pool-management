@@ -1,4 +1,4 @@
-import { offlineDb } from './database';
+
 import { supabase } from '../supabase';
 import { isValidUuid } from '../../utils';
 
@@ -11,8 +11,8 @@ export interface ConflictResolution {
 
 export const conflictResolver = {
   /**
-   * Pre-sync validation and conflict resolution for customers.
-   * If customer with same mobile already exists on Supabase, re-use server UUID!
+   * Pre-sync validation for customer inserts.
+   * Phone numbers are allowed to repeat, so no existing customer is reused.
    */
   async resolveCustomerConflict(
     localId: string,
@@ -23,69 +23,7 @@ export const conflictResolver = {
       return { resolved: false, action: 'error', message: 'Customer phone number is required.' };
     }
 
-    try {
-      // Check if server already has customer with this mobile
-      const { data: serverCustomer, error } = await supabase
-        .from('customers')
-        .select('*')
-        .eq('mobile', cleanedMobile)
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        console.warn('Conflict check customer error:', error.message);
-        return { resolved: true, action: 'proceed', cleanPayload: payload };
-      }
-
-      if (serverCustomer && isValidUuid(serverCustomer.id)) {
-        // Customer already exists on server!
-        // We must update dependent local sessions with this server customer ID!
-        if (serverCustomer.id !== localId) {
-          await offlineDb.transaction('rw', [offlineDb.customers, offlineDb.sessions, offlineDb.sync_queue], async () => {
-            // Update local customer
-            await offlineDb.customers.put({
-              ...serverCustomer,
-              _syncStatus: 'synced',
-              _localOnly: false,
-              _lastSyncedAt: new Date().toISOString(),
-            });
-
-            // If localId was different, update dependent local sessions
-            const depSessions = await offlineDb.sessions.where('customer_id').equals(localId).toArray();
-            for (const sess of depSessions) {
-              await offlineDb.sessions.update(sess.id, { customer_id: serverCustomer.id });
-            }
-
-            // Also update any pending queue payloads referring to old localId
-            const pendingQueue = await offlineDb.sync_queue.toArray();
-            for (const q of pendingQueue) {
-              if (q.dependencyId === localId) {
-                await offlineDb.sync_queue.update(q.id, {
-                  dependencyId: serverCustomer.id,
-                  payload: { ...q.payload, customer_id: serverCustomer.id },
-                });
-              }
-            }
-
-            // Delete old temporary local customer record if it differed
-            if (localId !== serverCustomer.id) {
-              await offlineDb.customers.delete(localId);
-            }
-          });
-
-          return {
-            resolved: true,
-            action: 'skip',
-            message: `Reused existing server customer ID (${serverCustomer.id}) for mobile ${cleanedMobile}`,
-          };
-        }
-      }
-
-      return { resolved: true, action: 'proceed', cleanPayload: payload };
-    } catch (err: any) {
-      return { resolved: true, action: 'proceed', cleanPayload: payload };
-    }
+    return { resolved: true, action: 'proceed', cleanPayload: payload };
   },
 
   /**

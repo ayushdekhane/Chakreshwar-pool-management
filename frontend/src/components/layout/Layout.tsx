@@ -42,9 +42,6 @@ export const Layout: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
 
-    // Immediately hydrate from local IndexedDB first for instant rendering
-    initializeOfflineData();
-
     // Check existing staff auth session in Supabase persistent storage
     authService
       .getSession()

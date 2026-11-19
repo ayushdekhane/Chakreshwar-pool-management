@@ -413,13 +413,7 @@ export const CheckoutModal: React.FC = () => {
           )}
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end order-1 sm:order-2">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="hidden sm:inline-block px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-            >
-              Close
-            </button>
+  
 
             <button
               type="submit"

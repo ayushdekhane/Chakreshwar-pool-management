@@ -759,12 +759,6 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const cleanedMobile = custData.phone.trim();
     const cleanedName = custData.name.trim();
 
-    // Check if customer already exists in store
-    const existing = get().customers.find((c) => c.phone === cleanedMobile);
-    if (existing) {
-      return existing;
-    }
-
     let customerId = crypto.randomUUID ? crypto.randomUUID() : `cust-${Date.now()}`;
     let isCreatedOffline = false;
 
@@ -821,7 +815,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }
 
     set((state) => ({
-      customers: [newCust, ...state.customers.filter((c) => c.phone !== newCust.phone && c.id !== newCust.id)],
+      customers: [newCust, ...state.customers.filter((c) => c.id !== newCust.id)],
     }));
 
     return newCust;
@@ -1795,6 +1789,12 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
           .filter((item) => item.groupCode === session.groupCode)
           .map((item) => item.id)
       : [sessionId];
+    const rentalIdsToDelete = get()
+      .rentals.filter((rental) => sessionIdsToDelete.includes(rental.sessionId || ''))
+      .map((rental) => rental.id);
+    const paymentIdsToDelete = get()
+      .payments.filter((payment) => sessionIdsToDelete.includes(payment.sessionId))
+      .map((payment) => payment.id);
 
     set((state) => {
       let updatedEquipment = state.equipment;
@@ -1819,6 +1819,12 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         equipment: updatedEquipment,
       };
     });
+
+    await Promise.all([
+      offlineDb.sessions.bulkDelete(sessionIdsToDelete),
+      offlineDb.costume_rentals.bulkDelete(rentalIdsToDelete),
+      offlineDb.payments.bulkDelete(paymentIdsToDelete),
+    ]);
   },
 
   recordPayment: async (data) => {

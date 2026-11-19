@@ -11,7 +11,7 @@ import { formatCurrency } from '../../utils';
 
 const schema = z.object({
   leaderName: z.string().trim().min(2, 'Leader name required'),
-  leaderPhone: z.string().min(10, 'Valid 10-digit phone required'),
+  leaderPhone: z.string().regex(/^\d{10}$/, 'Phone number should be 10 digits'),
   packageId: z.string().min(1, 'Please select a package'),
   customDuration: z.union([z.number().min(15).max(360), z.nan()]).optional(),
   memberCount: z.number().int().min(2, 'At least 2 swimmers are required'),
@@ -47,6 +47,8 @@ export const GroupEntryModal: React.FC = () => {
   const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
   const [wantsLocker, setWantsLocker] = useState(false);
   const [selectedLockers, setSelectedLockers] = useState<number[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const defaultPkg = packages[0];
 
@@ -122,12 +124,20 @@ export const GroupEntryModal: React.FC = () => {
   }, [activeModal]);
 
   const onSubmit = async (data: FormData) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
     if (!selectedPkg) {
       toast.error('Create and activate a package before registering a group.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
     if (wantsLocker && selectedLockers.length === 0) {
       toast.error('Select at least one available locker or turn off the locker option.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -149,6 +159,8 @@ export const GroupEntryModal: React.FC = () => {
       return !Number.isInteger(rental.quantity) || rental.quantity > (item?.availableStock || 0);
     })) {
       toast.error('The selected accessory quantity exceeds available stock.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -162,6 +174,8 @@ export const GroupEntryModal: React.FC = () => {
     });
     if (exceedsCombinedStock) {
       toast.error('The combined rental and sale quantity exceeds available stock.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -189,6 +203,9 @@ export const GroupEntryModal: React.FC = () => {
       closeModal();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create group session.');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -255,7 +272,8 @@ export const GroupEntryModal: React.FC = () => {
               <Phone className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
               <input
                 type="tel"
-                placeholder="+91 99002 44321"
+                inputMode="numeric"
+                placeholder="9900244321"
                 {...register('leaderPhone')}
                 className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-slate-300 bg-white"
               />
@@ -541,17 +559,18 @@ export const GroupEntryModal: React.FC = () => {
           <button
             type="button"
             onClick={closeModal}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={!selectedPkg}
+            disabled={!selectedPkg || isSubmitting}
             className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#70218C] hover:bg-[#58186f] rounded-xl shadow-md shadow-[#70218C]/25 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>Confirm & Start Group Session</span>
+            <span>{isSubmitting ? 'Creating Group Session...' : 'Confirm & Start Group Session'}</span>
           </button>
         </div>
       </form>

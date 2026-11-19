@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +11,7 @@ import { formatCurrency } from '../../utils';
 
 const schema = z.object({
   customerName: z.string().min(2, 'Name must be at least 2 characters'),
-  customerPhone: z.string().min(10, 'Enter a valid 10-digit phone number'),
+  customerPhone: z.string().regex(/^\d{10}$/, 'Phone number should be 10 digits'),
   packageId: z.string(),
   customDuration: z.union([z.number().min(10).max(360), z.nan()]).optional(),
   customAmount: z.union([z.number().min(0), z.nan()]).optional(),
@@ -48,6 +48,8 @@ export const IndividualEntryModal: React.FC = () => {
   >({});
   const [wantsLocker, setWantsLocker] = useState(false);
   const [selectedLockers, setSelectedLockers] = useState<number[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const {
     register,
@@ -111,12 +113,20 @@ export const IndividualEntryModal: React.FC = () => {
   }, [totalBill, watchPaymentStatus, setValue]);
 
   const onSubmit = async (data: FormData) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
     if (!isCustomPkg && !selectedPkg) {
       toast.error('Create and activate a package, or choose custom duration/rate.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
     if (wantsLocker && selectedLockers.length === 0) {
       toast.error('Select at least one available locker or turn off the locker option.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -141,6 +151,8 @@ export const IndividualEntryModal: React.FC = () => {
       );
     })) {
       toast.error('The selected accessory quantity exceeds available stock.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -154,6 +166,8 @@ export const IndividualEntryModal: React.FC = () => {
     });
     if (exceedsCombinedStock) {
       toast.error('The combined rental and sale quantity exceeds available stock.');
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
       return;
     }
 
@@ -183,6 +197,9 @@ export const IndividualEntryModal: React.FC = () => {
       closeModal();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create session. Please check fields.');
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -223,7 +240,8 @@ export const IndividualEntryModal: React.FC = () => {
               <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
                 type="tel"
-                placeholder="+91 98450 11223"
+                inputMode="numeric"
+                placeholder="9845011223"
                 {...register('customerPhone')}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#087FA5]"
               />
@@ -537,17 +555,18 @@ export const IndividualEntryModal: React.FC = () => {
           <button
             type="button"
             onClick={closeModal}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             type="submit"
-            disabled={!isCustomPkg && !selectedPkg}
+            disabled={(!isCustomPkg && !selectedPkg) || isSubmitting}
             className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md shadow-[#087FA5]/25 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Confirm & Start Swimming</span>
+            <span>{isSubmitting ? 'Creating Session...' : 'Confirm & Start Swimming'}</span>
           </button>
         </div>
       </form>

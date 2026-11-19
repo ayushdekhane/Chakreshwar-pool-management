@@ -209,6 +209,7 @@ export const Reports: React.FC = () => {
       'Entry Time': formatTime(s.entryTime),
       'Allotted Exit Time': formatTime(s.scheduledExitTime),
       'Actual Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : '',
+      Lockers: s.lockerNumbers?.join(', ') || '',
       Duration: `${s.durationMinutes} mins`,
       'Swimming Charges': s.swimmingCharges,
       'Extension Charges': s.extensionCharges,
@@ -516,6 +517,11 @@ export const Reports: React.FC = () => {
                           {s.actualExitTime && (
                             <div className="text-emerald-700 font-bold">
                               Exited: {formatTime(s.actualExitTime)}
+                            </div>
+                          )}
+                          {s.lockerNumbers && s.lockerNumbers.length > 0 && (
+                            <div className="text-[#087FA5] font-bold">
+                              Lockers: {s.lockerNumbers.join(', ')}
                             </div>
                           )}
                         </td>

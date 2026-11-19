@@ -3,8 +3,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
-import { User, Phone, Clock, Shirt, PlusCircle } from 'lucide-react';
+import { User, Phone, Clock, Shirt, PlusCircle, LockKeyhole } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { LockerSelector } from '../common/LockerSelector';
 import { usePoolStore } from '../../store/usePoolStore';
 import { formatCurrency } from '../../utils';
 
@@ -36,6 +37,8 @@ export const IndividualEntryModal: React.FC = () => {
   const closeModal = usePoolStore((state) => state.closeModal);
   const packages = usePoolStore((state) => state.packages.filter((p) => p.isActive));
   const equipment = usePoolStore((state) => state.equipment);
+  const sessions = usePoolStore((state) => state.sessions);
+  const settings = usePoolStore((state) => state.settings);
   const createIndividualSession = usePoolStore((state) => state.createIndividualSession);
 
   const [isCustomPkg, setIsCustomPkg] = useState(false);
@@ -43,6 +46,8 @@ export const IndividualEntryModal: React.FC = () => {
   const [selectedAccessories, setSelectedAccessories] = useState<
     Record<string, SelectedAccessory>
   >({});
+  const [wantsLocker, setWantsLocker] = useState(false);
+  const [selectedLockers, setSelectedLockers] = useState<number[]>([]);
 
   const {
     register,
@@ -110,6 +115,10 @@ export const IndividualEntryModal: React.FC = () => {
       toast.error('Create and activate a package, or choose custom duration/rate.');
       return;
     }
+    if (wantsLocker && selectedLockers.length === 0) {
+      toast.error('Select at least one available locker or turn off the locker option.');
+      return;
+    }
 
     const rentalItems = Object.values(selectedAccessories).map((selection) => {
       const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
@@ -160,6 +169,7 @@ export const IndividualEntryModal: React.FC = () => {
         paymentMethod: data.paymentMethod,
         paymentRef: data.paymentRef,
         rentals: rentalItems,
+        lockerNumbers: wantsLocker ? selectedLockers : [],
       });
 
       toast.success(`Check-in successful for ${session.customerName}!`, {
@@ -168,6 +178,8 @@ export const IndividualEntryModal: React.FC = () => {
       reset();
       setSelectedAccessories({});
       setEquipmentType('rental');
+      setWantsLocker(false);
+      setSelectedLockers([]);
       closeModal();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to create session. Please check fields.');
@@ -307,6 +319,33 @@ export const IndividualEntryModal: React.FC = () => {
                   className="w-full px-3 py-2 text-sm rounded-lg border border-amber-300 bg-white"
                 />
               </div>
+            </div>
+          )}
+        </div>
+
+        {/* Equipment Add-on */}
+        <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={wantsLocker}
+              onChange={(event) => {
+                setWantsLocker(event.target.checked);
+                if (!event.target.checked) setSelectedLockers([]);
+              }}
+              className="w-4 h-4 rounded text-[#087FA5] focus:ring-[#087FA5]"
+            />
+            <LockKeyhole className="w-4 h-4 text-[#087FA5]" />
+            Customer wants locker(s)
+          </label>
+          {wantsLocker && (
+            <div className="mt-3">
+              <LockerSelector
+                sessions={sessions}
+                settings={settings}
+                selectedLockers={selectedLockers}
+                onChange={setSelectedLockers}
+              />
             </div>
           )}
         </div>

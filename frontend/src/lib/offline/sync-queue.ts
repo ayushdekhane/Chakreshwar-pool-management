@@ -31,6 +31,7 @@ export const syncQueue = {
       ) {
         mergedPayload = {
           ...existing.payload,
+          ...params.payload,
           available_stock_delta:
             existing.payload.available_stock_delta + params.payload.available_stock_delta,
         };
@@ -154,5 +155,18 @@ export const syncQueue = {
     const failedItems = await offlineDb.sync_queue.where('status').equals('failed').toArray();
     const ids = failedItems.map((i) => i.id);
     await offlineDb.sync_queue.bulkDelete(ids);
+  },
+
+  async retryFailedQueue(): Promise<void> {
+    const failedItems = await offlineDb.sync_queue.where('status').equals('failed').toArray();
+    await offlineDb.sync_queue.bulkPut(
+      failedItems.map((item) => ({
+        ...item,
+        status: 'pending',
+        attempts: 0,
+        lastError: null,
+        nextRetryAt: undefined,
+      }))
+    );
   },
 };

@@ -83,6 +83,7 @@ export interface Session {
   entryTime: string; // ISO String
   scheduledExitTime: string; // ISO String
   actualExitTime?: string; // ISO String
+  lockerNumbers?: number[];
   status: SessionStatus;
   swimmingCharges: number;
   extensionCharges: number;
@@ -142,4 +143,5 @@ export interface Settings {
   dateFormat: string;
   timeFormat: '12h' | '24h';
   defaultFilter: string;
+  lockerCount: number;
 }

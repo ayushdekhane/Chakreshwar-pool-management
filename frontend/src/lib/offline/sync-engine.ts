@@ -104,14 +104,16 @@ class SyncEngine {
         }
       }
 
-      // Record successful sync metadata
-      const nowIso = new Date().toISOString();
-      this.lastSyncedAt = nowIso;
-      await offlineDb.sync_metadata.put({
-        key: 'last_successful_sync',
-        value: nowIso,
-        updatedAt: nowIso,
-      });
+      // A cycle is successful only if every queued mutation completed.
+      if (result.failureCount === 0) {
+        const nowIso = new Date().toISOString();
+        this.lastSyncedAt = nowIso;
+        await offlineDb.sync_metadata.put({
+          key: 'last_successful_sync',
+          value: nowIso,
+          updatedAt: nowIso,
+        });
+      }
     } catch (globalErr: any) {
       console.error('[SyncEngine] Unexpected error during sync cycle:', globalErr);
     } finally {
@@ -287,6 +289,11 @@ class SyncEngine {
             ...cleanData
           } = payload;
 
+          cleanData.transaction_type = 'payment';
+          if (!cleanData.created_at) {
+            cleanData.created_at = new Date().toISOString();
+          }
+
           const insertPayload = isValidUuid(entityId)
             ? { id: entityId, ...cleanData }
             : cleanData;
@@ -408,6 +415,38 @@ class SyncEngine {
           const { _lastSyncedAt, ...cleanData } = payload;
           const quantityDelta = cleanData.available_stock_delta;
           if (typeof quantityDelta === 'number') {
+            const targetAvailable =
+              typeof cleanData.target_available_stock === 'number'
+                ? cleanData.target_available_stock
+                : undefined;
+            const targetTotal =
+              typeof cleanData.target_total_stock === 'number'
+                ? cleanData.target_total_stock
+                : undefined;
+
+            if (
+              targetAvailable !== undefined &&
+              targetTotal !== undefined &&
+              targetAvailable >= 0 &&
+              targetAvailable <= targetTotal
+            ) {
+              const { data: updatedRow, error: targetError } = await supabase
+                .from('equipment')
+                .update({
+                  available_stock: targetAvailable,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', entityId)
+                .select('available_stock')
+                .single();
+              if (targetError) throw targetError;
+              await offlineDb.equipment.update(entityId, {
+                available_stock: Number(updatedRow.available_stock),
+                _lastSyncedAt: new Date().toISOString(),
+              });
+              break;
+            }
+
             const { data, error } = await supabase.rpc('adjust_equipment_available_stock', {
               p_equipment_id: entityId,
               p_quantity_delta: quantityDelta,

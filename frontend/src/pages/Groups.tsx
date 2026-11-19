@@ -239,6 +239,11 @@ export const Groups: React.FC = () => {
                             Exited: {formatTime(group.actualExitTime)}
                           </div>
                         )}
+                        {group.lockerNumbers && group.lockerNumbers.length > 0 && (
+                          <div className="text-[#70218C] font-bold">
+                            Lockers: {group.lockerNumbers.join(', ')}
+                          </div>
+                        )}
                       </td>
 
                       {/* Shared timer */}

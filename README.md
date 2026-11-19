@@ -122,6 +122,12 @@ If upgrading a database created with the earlier inventory schema, run
 For an existing database that has already run that inventory migration, run
 `frontend/supabase/equipment_sale_option_migration.sql` once to add optional sale pricing to rental equipment.
 
+Run `frontend/supabase/realtime_migration.sql` once to add all live-sync tables to the
+Supabase `supabase_realtime` publication. Realtime subscriptions are not delivered until
+this database publication is configured. Column-only schema changes do not require
+rerunning it. When adding a new table and subscribing to it in the app, rerun this
+migration or rerun `frontend/supabase/schema.sql`; both publication blocks are idempotent.
+
 ### 2. (Optional) Run PWA Offline Sync Migration
 To enable server-side `updated_at` triggers and explicit payment idempotency indexing, run:
 `frontend/supabase/pwa_offline_migration.sql`

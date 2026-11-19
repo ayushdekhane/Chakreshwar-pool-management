@@ -64,6 +64,10 @@ If your database uses the earlier equipment inventory schema, also run `supabase
 
 If that inventory migration has already been applied, run `supabase/equipment_sale_option_migration.sql` once to add optional sale pricing for rental equipment.
 
+Run `supabase/realtime_migration.sql` once to add the live-sync tables to the
+Supabase `supabase_realtime` publication. Column-only changes do not require rerunning it.
+After adding a new live-synced table, rerun this migration or the core schema script.
+
 ### 2. (Optional) Run PWA Offline Sync Migration
 `supabase/pwa_offline_migration.sql`
 

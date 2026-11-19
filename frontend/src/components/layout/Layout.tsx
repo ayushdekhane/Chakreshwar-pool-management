@@ -125,7 +125,18 @@ export const Layout: React.FC = () => {
         { event: '*', schema: 'public', table: 'app_settings' },
         queueRefresh
       )
-      .subscribe();
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'packages' },
+        queueRefresh
+      )
+      .subscribe((status, error) => {
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Realtime] Supabase live data channel failed:', error);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Realtime] Supabase live data channel timed out');
+        }
+      });
 
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);

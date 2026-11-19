@@ -366,6 +366,11 @@ export const Sessions: React.FC = () => {
                               Exited: {formatTime(session.actualExitTime)}
                             </div>
                           )}
+                          {session.lockerNumbers && session.lockerNumbers.length > 0 && (
+                            <div className="text-[#087FA5] font-bold">
+                              Lockers: {session.lockerNumbers.join(', ')}
+                            </div>
+                          )}
                         </td>
 
                         {/* Live Timer */}

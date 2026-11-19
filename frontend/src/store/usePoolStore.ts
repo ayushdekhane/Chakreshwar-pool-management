@@ -114,6 +114,7 @@ interface PoolStore {
     paidAmount: number;
     paymentMethod?: PaymentRecord['method'];
     paymentRef?: string;
+    lockerNumbers?: number[];
     rentals?: {
       equipmentId: string;
       transactionType?: 'rental' | 'sale';
@@ -134,6 +135,7 @@ interface PoolStore {
     paymentMethod?: PaymentRecord['method'];
     paymentRef?: string;
     notes?: string;
+    lockerNumbers?: number[];
     rentals?: {
       equipmentId: string;
       transactionType?: 'rental' | 'sale';
@@ -236,6 +238,26 @@ function mapFrontendPaymentMethod(method: PaymentMethod): DbPaymentMethod {
   return 'other';
 }
 
+function validateLockerSelection(lockerNumbers: number[] | undefined, sessions: Session[], lockerCount: number): number[] {
+  const selected = [...new Set((lockerNumbers || []).filter((number) => Number.isInteger(number)))].sort((a, b) => a - b);
+  if (selected.some((number) => number < 1 || number > lockerCount)) {
+    throw new Error('One or more selected lockers are outside the configured locker range.');
+  }
+  const occupied = new Set(
+    sessions
+      .filter((session) =>
+        session.status === 'active' ||
+        session.status === 'expiring' ||
+        session.status === 'expired'
+      )
+      .flatMap((session) => session.lockerNumbers || [])
+  );
+  if (selected.some((number) => occupied.has(number))) {
+    throw new Error('One or more selected lockers are already occupied. Please choose available lockers.');
+  }
+  return selected;
+}
+
 function toEquipment(row: DbEquipment): Equipment {
   return {
     id: row.id,
@@ -288,7 +310,11 @@ async function persistEquipmentStock(
         entityType: 'equipment',
         entityId: equipment.id,
         operation: 'update',
-        payload: { available_stock_delta: quantityDelta },
+        payload: {
+          available_stock_delta: quantityDelta,
+          target_available_stock: updatedEquipment.availableStock,
+          target_total_stock: updatedEquipment.totalStock,
+        },
       });
     }
   } else if (isSupabaseConfigured) {
@@ -296,7 +322,11 @@ async function persistEquipmentStock(
       entityType: 'equipment',
       entityId: equipment.id,
       operation: 'update',
-      payload: { available_stock_delta: quantityDelta },
+      payload: {
+        available_stock_delta: quantityDelta,
+        target_available_stock: updatedEquipment.availableStock,
+        target_total_stock: updatedEquipment.totalStock,
+      },
     });
   }
 
@@ -416,6 +446,7 @@ function transformDbData(
       entryTime: s.entry_time,
       scheduledExitTime: s.scheduled_exit_time,
       actualExitTime: s.actual_exit_time || undefined,
+      lockerNumbers: s.locker_numbers || [],
       status: s.status as SessionStatus,
       swimmingCharges,
       extensionCharges: 0,
@@ -798,6 +829,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
   createIndividualSession: async (data) => {
     const now = new Date();
+    const lockerNumbers = validateLockerSelection(data.lockerNumbers, get().sessions, get().settings.lockerCount);
     const pkg = get().packages.find((p) => p.id === data.packageId);
     const duration = data.customDuration || pkg?.durationMinutes || 60;
     const swimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price ?? 100);
@@ -867,6 +899,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       package_id: pkg?.id || null,
       package_name: pkg?.name || 'Custom Package',
       costume_used: selectedRentals.length > 0,
+      locker_numbers: lockerNumbers,
       status: 'active' as const,
     };
 
@@ -1077,8 +1110,10 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
             session_id: sessionId,
             amount: paidAmount,
             payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
+            transaction_type: 'payment',
             notes: data.paymentRef || 'Check-in admission payment',
             payment_date: now.toISOString(),
+            created_at: now.toISOString(),
           },
           dependencyId: sessionId,
         });
@@ -1112,6 +1147,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       durationMinutes: duration,
       entryTime: now.toISOString(),
       scheduledExitTime: scheduledExit,
+      lockerNumbers,
       status: 'active',
       swimmingCharges: swimCharge,
       extensionCharges: 0,
@@ -1154,6 +1190,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
   createGroupSession: async (data) => {
     const now = new Date();
+    const lockerNumbers = validateLockerSelection(data.lockerNumbers, get().sessions, get().settings.lockerCount);
     const pkg = get().packages.find((p) => p.id === data.packageId);
     if (!pkg) {
       throw new Error('The selected package is no longer available. Choose an active package and try again.');
@@ -1234,6 +1271,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       duration_minutes: duration,
       session_amount: data.totalPrice,
       costume_used: selectedRentals.length > 0,
+      locker_numbers: lockerNumbers,
       status: 'active' as const,
     };
 
@@ -1389,7 +1427,9 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         session_id: sessionId,
         amount: data.initialPayment,
         payment_method: mapFrontendPaymentMethod(data.paymentMethod || 'cash'),
+        transaction_type: 'payment',
         notes: `Group Pass led by ${groupName} (${data.memberCount} members)`,
+        created_at: now.toISOString(),
       };
 
       if (!isOfflineGroup && isOnline) {
@@ -1469,6 +1509,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       durationMinutes: duration,
       entryTime: now.toISOString(),
       scheduledExitTime: scheduledExit,
+      lockerNumbers,
       status: 'active',
       swimmingCharges: data.totalPrice,
       extensionCharges: 0,
@@ -1795,7 +1836,9 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       session_id: data.sessionId,
       amount: data.amount,
       payment_method: mapFrontendPaymentMethod(data.method),
+      transaction_type: 'payment',
       notes: data.notes || data.referenceNumber,
+      created_at: now.toISOString(),
     };
 
     if (isValidUuid(data.sessionId) && isSupabaseConfigured && connectivity.isOnline()) {

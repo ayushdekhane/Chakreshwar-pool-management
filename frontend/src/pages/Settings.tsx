@@ -23,6 +23,7 @@ import {
   Table,
   FileCode,
   Check,
+  LockKeyhole,
 } from 'lucide-react';
 import { usePoolStore } from '../store/usePoolStore';
 import { formatCurrency, cn } from '../utils';
@@ -39,6 +40,7 @@ const normalizeEquipmentSizes = (sizes: string[]) => {
 
 export const Settings: React.FC = () => {
   const settings = usePoolStore((state) => state.settings);
+  const sessions = usePoolStore((state) => state.sessions);
   const equipment = usePoolStore((state) => state.equipment);
   const updateEquipment = usePoolStore((state) => state.updateEquipment);
   const addEquipment = usePoolStore((state) => state.addEquipment);
@@ -56,7 +58,7 @@ export const Settings: React.FC = () => {
 
   // Active Settings Tab
   const [activeTab, setActiveTab] = useState<
-    'business' | 'pricing' | 'timer' | 'rentals' | 'sales' | 'preferences' | 'data'
+    'business' | 'pricing' | 'timer' | 'lockers' | 'rentals' | 'sales' | 'preferences' | 'data'
   >('business');
   const [rentalDrafts, setRentalDrafts] = useState<
     Record<string, {
@@ -136,6 +138,7 @@ export const Settings: React.FC = () => {
       dateFormat: settings.dateFormat,
       timeFormat: settings.timeFormat,
       defaultFilter: settings.defaultFilter,
+      lockerCount: settings.lockerCount,
     });
   }, [settings]);
 
@@ -158,10 +161,31 @@ export const Settings: React.FC = () => {
     dateFormat: settings.dateFormat,
     timeFormat: settings.timeFormat,
     defaultFilter: settings.defaultFilter,
+    lockerCount: settings.lockerCount,
   });
 
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (activeTab === 'lockers') {
+      const requestedLockerCount = Number(formData.lockerCount);
+      const allocatedLockerNumbers = sessions
+        .filter((session) =>
+          session.status === 'active' ||
+          session.status === 'expiring' ||
+          session.status === 'expired'
+        )
+        .flatMap((session) => session.lockerNumbers || []);
+      const highestAllocatedLocker = Math.max(0, ...allocatedLockerNumbers);
+      if (
+        !Number.isInteger(requestedLockerCount) ||
+        requestedLockerCount < highestAllocatedLocker
+      ) {
+        toast.error(
+          `Locker count cannot be lower than currently allocated locker #${highestAllocatedLocker}.`
+        );
+        return;
+      }
+    }
     void updateSettings(formData)
       .then(() => toast.success('Settings updated successfully!'))
       .catch((error) => toast.error(error instanceof Error ? error.message : 'Failed to save settings.'));
@@ -325,6 +349,7 @@ export const Settings: React.FC = () => {
           { id: 'business', label: 'Business Profile', icon: Building2 },
           { id: 'pricing', label: 'Penalty Settings', icon: Tag },
           { id: 'timer', label: 'Timer & Alarms', icon: Bell },
+          { id: 'lockers', label: 'Lockers', icon: LockKeyhole },
           { id: 'rentals', label: 'Rental Equipment', icon: Shirt },
           { id: 'sales', label: 'Sell Equipment', icon: Tag },
           { id: 'preferences', label: 'Preferences', icon: Sliders },
@@ -678,7 +703,39 @@ export const Settings: React.FC = () => {
           </form>
         )}
 
-        {/* 4. RENTAL SETTINGS */}
+        {activeTab === 'lockers' && (
+          <form onSubmit={handleSave} className="space-y-5">
+            <div>
+              <h3 className="text-base font-bold text-slate-900 mb-1">Locker System</h3>
+              <p className="text-xs text-slate-500">
+                Configure the total number of lockers available for customer allocation.
+                Occupied lockers remain locked until the session checkout confirms key return.
+              </p>
+            </div>
+            <label className="block max-w-xs text-xs font-bold text-slate-700">
+              Number of lockers
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={formData.lockerCount}
+                onChange={(event) =>
+                  setFormData({ ...formData, lockerCount: Math.max(0, Number(event.target.value)) })
+                }
+                className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"
+              />
+            </label>
+            <button
+              type="submit"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#087FA5] text-white text-xs font-bold hover:bg-[#066382]"
+            >
+              <Save className="w-4 h-4" />
+              Save Locker Settings
+            </button>
+          </form>
+        )}
+
+        {/* 5. RENTAL SETTINGS */}
         {(activeTab === 'rentals' || activeTab === 'sales') && (
           <div className="space-y-4">
             <div>

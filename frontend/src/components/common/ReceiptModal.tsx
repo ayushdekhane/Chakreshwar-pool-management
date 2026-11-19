@@ -83,17 +83,22 @@ export const ReceiptModal: React.FC = () => {
               <span className="text-slate-500">Entry Time:</span>
               <span>{formatTime(session.entryTime)}</span>
             </div>
-           
+            <div className="flex justify-between">
+              <span className="text-slate-500">Allotted Exit:</span>
+              <span>{formatTime(session.scheduledExitTime)}</span>
+            </div>
             {session.actualExitTime && (
               <div className="flex justify-between">
                 <span className="text-slate-500">Actual Exit:</span>
                 <span className="font-bold text-slate-800">{formatTime(session.actualExitTime)}</span>
               </div>
             )}
-             <div className="flex justify-between">
-              <span className="text-slate-500">Allotted Exit:</span>
-              <span>{formatTime(session.scheduledExitTime)}</span>
-            </div>
+            {session.lockerNumbers && session.lockerNumbers.length > 0 && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">Locker(s):</span>
+                <span className="font-bold text-slate-800">{session.lockerNumbers.join(', ')}</span>
+              </div>
+            )}
           </div>
 
           {/* Line Items */}

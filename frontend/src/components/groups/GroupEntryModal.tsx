@@ -3,8 +3,9 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from 'sonner';
-import { Phone, User, Clock, CheckCircle2 } from 'lucide-react';
+import { Phone, User, Clock, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { Modal } from '../common/Modal';
+import { LockerSelector } from '../common/LockerSelector';
 import { usePoolStore } from '../../store/usePoolStore';
 import { formatCurrency } from '../../utils';
 
@@ -37,11 +38,15 @@ export const GroupEntryModal: React.FC = () => {
   const closeModal = usePoolStore((state) => state.closeModal);
   const packages = usePoolStore((state) => state.packages.filter((p) => p.isActive));
   const equipment = usePoolStore((state) => state.equipment);
+  const sessions = usePoolStore((state) => state.sessions);
+  const settings = usePoolStore((state) => state.settings);
   const createGroupSession = usePoolStore((state) => state.createGroupSession);
   const [selectedAccessories, setSelectedAccessories] = useState<
     Record<string, SelectedAccessory>
   >({});
   const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
+  const [wantsLocker, setWantsLocker] = useState(false);
+  const [selectedLockers, setSelectedLockers] = useState<number[]>([]);
 
   const defaultPkg = packages[0];
 
@@ -111,12 +116,18 @@ export const GroupEntryModal: React.FC = () => {
     if (activeModal === 'group_entry') {
       setSelectedAccessories({});
       setEquipmentType('rental');
+      setWantsLocker(false);
+      setSelectedLockers([]);
     }
   }, [activeModal]);
 
   const onSubmit = async (data: FormData) => {
     if (!selectedPkg) {
       toast.error('Create and activate a package before registering a group.');
+      return;
+    }
+    if (wantsLocker && selectedLockers.length === 0) {
+      toast.error('Select at least one available locker or turn off the locker option.');
       return;
     }
 
@@ -167,6 +178,7 @@ export const GroupEntryModal: React.FC = () => {
         paymentRef: data.paymentRef,
         notes: data.notes,
         rentals: rentalItems,
+        lockerNumbers: wantsLocker ? selectedLockers : [],
       });
 
       toast.success(`Group for ${session.customerName} checked in!`, {
@@ -189,6 +201,32 @@ export const GroupEntryModal: React.FC = () => {
       maxWidth="3xl"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50">
+          <label className="flex items-center gap-2 text-xs font-bold text-slate-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={wantsLocker}
+              onChange={(event) => {
+                setWantsLocker(event.target.checked);
+                if (!event.target.checked) setSelectedLockers([]);
+              }}
+              className="w-4 h-4 rounded accent-[#70218C]"
+            />
+            <LockKeyhole className="w-4 h-4 text-[#70218C]" />
+            Group wants locker(s)
+          </label>
+          {wantsLocker && (
+            <div className="mt-3">
+              <LockerSelector
+                sessions={sessions}
+                settings={settings}
+                selectedLockers={selectedLockers}
+                onChange={setSelectedLockers}
+                accentClassName="text-[#70218C]"
+              />
+            </div>
+          )}
+        </div>
         {/* Group & Leader Details */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-4 rounded-xl bg-slate-50 border border-slate-200">
           <div>

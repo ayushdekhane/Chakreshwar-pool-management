@@ -18,6 +18,7 @@ export const initialSettings: Settings = {
   dateFormat: 'dd/MM/yyyy',
   timeFormat: '12h',
   defaultFilter: 'active',
+  lockerCount: 20,
 };
 
 export const initialPackages: Package[] = [

@@ -15,6 +15,7 @@ import { offlineStorage } from '../../lib/offline/offline-storage';
 import { syncEngine } from '../../lib/offline/sync-engine';
 import { syncQueue } from '../../lib/offline/sync-queue';
 import { connectivity } from '../../lib/offline/connectivity';
+import { offlineDb } from '../../lib/offline/database';
 import { StorageStats } from '../../lib/offline/sync-types';
 import { formatTime, cn } from '../../utils';
 import { toast } from 'sonner';
@@ -24,12 +25,32 @@ export const OfflineStorageSettings: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(syncEngine.getIsSyncing());
   const [isOnline, setIsOnline] = useState<boolean>(connectivity.isOnline());
+  const [failedItems, setFailedItems] = useState<Array<{
+    id: string;
+    entityType: string;
+    entityId: string;
+    operation: string;
+    attempts: number;
+    lastError: string | null;
+  }>>([]);
 
   const loadStats = async () => {
     try {
       setLoading(true);
       const res = await offlineStorage.getStorageStats();
       setStats(res);
+      const queueItems = await offlineDb.sync_queue
+        .where('status')
+        .equals('failed')
+        .toArray();
+      setFailedItems(queueItems.map((item) => ({
+        id: item.id,
+        entityType: item.entityType,
+        entityId: item.entityId,
+        operation: item.operation,
+        attempts: item.attempts,
+        lastError: item.lastError ?? null,
+      })));
     } catch (err: any) {
       console.error('Failed to load storage stats:', err);
     } finally {
@@ -63,7 +84,12 @@ export const OfflineStorageSettings: React.FC = () => {
     toast.info('Starting synchronization with Supabase...');
     const result = await syncEngine.syncNow();
     if (result.failureCount > 0) {
-      toast.error(`Sync finished with ${result.failureCount} error(s). Check details.`);
+      const firstError = result.errors[0]?.error;
+      toast.error(
+        firstError
+          ? `Sync failed: ${firstError}`
+          : `Sync finished with ${result.failureCount} error(s).`
+      );
     } else if (result.successCount > 0) {
       toast.success(`Successfully synchronized ${result.successCount} queued operation(s).`);
     } else {
@@ -78,6 +104,13 @@ export const OfflineStorageSettings: React.FC = () => {
       toast.success('Failed queue items cleared.');
       loadStats();
     }
+  };
+
+  const handleRetryFailedQueue = async () => {
+    await syncQueue.retryFailedQueue();
+    toast.info('Retrying failed mutations...');
+    await loadStats();
+    await syncEngine.syncNow();
   };
 
   const formatBytes = (bytes?: number) => {
@@ -244,23 +277,50 @@ export const OfflineStorageSettings: React.FC = () => {
 
       {/* Failed Queue Items Warning if any */}
       {(stats?.failedQueueCount ?? 0) > 0 && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2 text-rose-800">
-            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
-            <span>
-              <strong>{stats?.failedQueueCount}</strong> mutation(s) encountered validation or server errors and could not be synchronized automatically.
-            </span>
+        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-rose-800">
+              <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+              <span>
+                <strong>{stats?.failedQueueCount}</strong> mutation(s) encountered validation or server errors and could not be synchronized automatically.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRetryFailedQueue}
+                disabled={isSyncing}
+                className="flex items-center gap-1 px-2.5 py-1 bg-white border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 font-semibold text-[11px]"
+              >
+                <RefreshCw className={cn('w-3 h-3', isSyncing && 'animate-spin')} />
+                <span>Retry Failed Items</span>
+              </button>
+              <button
+                onClick={handleClearFailedQueue}
+                className="flex items-center gap-1 px-2.5 py-1 bg-white border border-rose-300 text-rose-700 rounded-lg hover:bg-rose-100 font-semibold text-[11px]"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>Clear Failed Items</span>
+              </button>
+            </div>
           </div>
-          <button
-            onClick={handleClearFailedQueue}
-            className="flex items-center gap-1 px-2.5 py-1 bg-white border border-rose-300 text-rose-700 rounded-lg hover:bg-rose-100 font-semibold text-[11px]"
-          >
-            <Trash2 className="w-3 h-3" />
-            <span>Clear Failed Items</span>
-          </button>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {failedItems.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-lg border border-rose-200 bg-white px-2.5 py-2 text-[11px]"
+              >
+                <div className="flex justify-between gap-2 text-rose-900">
+                  <strong>{item.entityType} · {item.operation}</strong>
+                  <span>{item.attempts} attempt(s)</span>
+                </div>
+                <div className="mt-1 break-words text-rose-700">
+                  {item.lastError || 'No server error details recorded.'}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
   );
 };
-

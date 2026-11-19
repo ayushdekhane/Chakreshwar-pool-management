@@ -90,6 +90,7 @@ export const sessionService = {
     package_name?: string | null;
     entry_time: string;
     scheduled_exit_time: string;
+    locker_numbers?: number[];
     duration_minutes: number;
     session_amount: number;
     costume_used?: boolean;
@@ -116,6 +117,7 @@ export const sessionService = {
         ...(data.package_name !== undefined ? { package_name: data.package_name } : {}),
         entry_time: data.entry_time,
         scheduled_exit_time: data.scheduled_exit_time,
+        ...(data.locker_numbers !== undefined ? { locker_numbers: data.locker_numbers } : {}),
         duration_minutes: data.duration_minutes,
         session_amount: data.session_amount,
         costume_used: data.costume_used || false,

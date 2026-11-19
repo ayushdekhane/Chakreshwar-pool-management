@@ -32,6 +32,7 @@
 --     entry_time TIMESTAMPTZ NOT NULL,
 --     scheduled_exit_time TIMESTAMPTZ NOT NULL,
 --     actual_exit_time TIMESTAMPTZ,
+--     locker_numbers INTEGER[] NOT NULL DEFAULT '{}',
 --     duration_minutes INTEGER NOT NULL DEFAULT 60,
 --     actual_duration_minutes INTEGER,
 --     session_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
@@ -39,6 +40,9 @@
 --     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'expired', 'completed')),
 --     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 -- );
+--
+-- Apply frontend/supabase/lockers_migration.sql after the base schema to enforce
+-- positive, unique, and conflict-free active locker allocations.
 
 -- -- Indexes for active session timers, date filtering and group lookups
 -- CREATE INDEX IF NOT EXISTS idx_sessions_customer_id ON public.sessions(customer_id);
@@ -704,6 +708,51 @@ CREATE POLICY "Staff delete packages"
     ON public.packages
     FOR DELETE TO authenticated
     USING (true);
+
+-- Keep Realtime publication membership in sync with the live data tables.
+DO $$
+DECLARE
+    table_name TEXT;
+    table_names TEXT[] := ARRAY[
+        'customers',
+        'sessions',
+        'payments',
+        'costume_rentals',
+        'equipment',
+        'packages',
+        'app_settings'
+    ];
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime'
+    ) THEN
+        CREATE PUBLICATION supabase_realtime;
+    END IF;
+
+    FOREACH table_name IN ARRAY table_names
+    LOOP
+        IF EXISTS (
+            SELECT 1
+            FROM pg_class
+            JOIN pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+            WHERE pg_namespace.nspname = 'public'
+              AND pg_class.relname = table_name
+              AND pg_class.relkind = 'r'
+        ) AND NOT EXISTS (
+            SELECT 1
+            FROM pg_publication_tables
+            WHERE pubname = 'supabase_realtime'
+              AND schemaname = 'public'
+              AND tablename = table_name
+        ) THEN
+            EXECUTE format(
+                'ALTER PUBLICATION supabase_realtime ADD TABLE public.%I',
+                table_name
+            );
+        END IF;
+    END LOOP;
+END;
+$$;
 
 NOTIFY pgrst, 'reload schema';
 

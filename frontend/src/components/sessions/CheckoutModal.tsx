@@ -10,6 +10,7 @@ import {
   Phone,
   Clock,
   ShieldCheck,
+  LockKeyhole,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
@@ -33,9 +34,11 @@ export const CheckoutModal: React.FC = () => {
   const [reference, setReference] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [returnedRentalIds, setReturnedRentalIds] = useState<Record<string, boolean>>({});
+  const [lockerKeyReturned, setLockerKeyReturned] = useState(false);
 
   useEffect(() => {
     setReturnedRentalIds({});
+    setLockerKeyReturned(false);
   }, [selectedSessionId]);
 
   useEffect(() => {
@@ -90,6 +93,8 @@ export const CheckoutModal: React.FC = () => {
   const pendingRentals = sessionRentals.filter(
     (rental) => rental.equipmentType !== 'sale' && rental.quantity > rental.returnedQuantity
   );
+  const sessionLockers = session.lockerNumbers || [];
+  const hasLockers = sessionLockers.length > 0;
 
   const returnCheckedEquipment = async () => {
     for (const rental of pendingRentals) {
@@ -103,6 +108,10 @@ export const CheckoutModal: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      if (hasLockers && !lockerKeyReturned) {
+        toast.error('Confirm that all locker keys have been returned before checkout.');
+        return;
+      }
       const parsedAmount = parseFloat(payAmount);
       const amountToCollect = isNaN(parsedAmount) ? 0 : Math.max(0, parsedAmount);
 
@@ -139,6 +148,10 @@ export const CheckoutModal: React.FC = () => {
     ) {
       setIsSubmitting(true);
       try {
+        if (hasLockers && !lockerKeyReturned) {
+          toast.error('Confirm that all locker keys have been returned before checkout.');
+          return;
+        }
         await returnCheckedEquipment();
         await checkoutAndPaySession({
           sessionId: session.id,
@@ -197,6 +210,24 @@ export const CheckoutModal: React.FC = () => {
               </span>
             </div>
           </div>
+
+          {hasLockers && (
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="flex items-center gap-2 font-bold">
+                <LockKeyhole className="w-4 h-4" />
+                Locker keys: {sessionLockers.join(', ')}
+              </div>
+              <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={lockerKeyReturned}
+                  onChange={(event) => setLockerKeyReturned(event.target.checked)}
+                  className="w-4 h-4 rounded text-[#087FA5] focus:ring-[#087FA5]"
+                />
+                All locker keys have been returned
+              </label>
+            </div>
+          )}
 
           {/* Charges Pill Grid */}
           <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-200 text-center text-xs">

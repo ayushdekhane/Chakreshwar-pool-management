@@ -121,6 +121,14 @@ export const SessionDetailsModal: React.FC = () => {
                   </span>
                 </div>
               )}
+              {session.lockerNumbers && session.lockerNumbers.length > 0 && (
+                <div>
+                  Lockers:{' '}
+                  <span className="font-mono font-bold text-[#087FA5]">
+                    {session.lockerNumbers.join(', ')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

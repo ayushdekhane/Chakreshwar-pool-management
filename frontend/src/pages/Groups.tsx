@@ -233,7 +233,12 @@ export const Groups: React.FC = () => {
                       {/* Schedule */}
                       <td className="py-3.5 px-4 font-mono text-[11px]">
                         <div>In: {formatTime(group.entryTime)}</div>
-                        <div className="text-slate-500">Out: {formatTime(group.scheduledExitTime)}</div>
+                        <div className="text-slate-500">Allotted out: {formatTime(group.scheduledExitTime)}</div>
+                        {group.actualExitTime && (
+                          <div className="text-emerald-700 font-bold">
+                            Exited: {formatTime(group.actualExitTime)}
+                          </div>
+                        )}
                       </td>
 
                       {/* Shared timer */}

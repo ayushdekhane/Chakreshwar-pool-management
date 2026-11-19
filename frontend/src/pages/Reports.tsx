@@ -207,7 +207,8 @@ export const Reports: React.FC = () => {
       Type: s.type,
       Swimmers: s.peopleCount,
       'Entry Time': formatTime(s.entryTime),
-      'Exit Time': formatTime(s.scheduledExitTime),
+      'Allotted Exit Time': formatTime(s.scheduledExitTime),
+      'Actual Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : '',
       Duration: `${s.durationMinutes} mins`,
       'Swimming Charges': s.swimmingCharges,
       'Extension Charges': s.extensionCharges,
@@ -475,7 +476,7 @@ export const Reports: React.FC = () => {
                   <tr className="bg-slate-50/50 border-b border-[#E2E8F0] text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
                     <th className="py-3 px-3">Session</th>
                     <th className="py-3 px-3">Customer</th>
-                    <th className="py-3 px-3">Slot In/Out</th>
+                    <th className="py-3 px-3">Entry / Exit Times</th>
                     <th className="py-3 px-3">Duration</th>
                     <th className="py-3 px-3">Swim Fee</th>
                     <th className="py-3 px-3">Ext Fee</th>
@@ -508,8 +509,15 @@ export const Reports: React.FC = () => {
                           <span className="text-[10px] text-slate-500">{s.customerPhone}</span>
                         </td>
                         <td className="py-3 px-3 font-mono text-[11px]">
-                          <div>{formatTime(s.entryTime)}</div>
-                          <div className="text-slate-400">{formatTime(s.scheduledExitTime)}</div>
+                          <div>In: {formatTime(s.entryTime)}</div>
+                          <div className="text-slate-400">
+                            Allotted out: {formatTime(s.scheduledExitTime)}
+                          </div>
+                          {s.actualExitTime && (
+                            <div className="text-emerald-700 font-bold">
+                              Exited: {formatTime(s.actualExitTime)}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-3 font-medium">
                           {s.durationMinutes}m ({s.peopleCount} pax)

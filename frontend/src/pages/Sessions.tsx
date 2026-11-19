@@ -359,8 +359,13 @@ export const Sessions: React.FC = () => {
                         <td className="py-3.5 px-4 font-mono text-[11px]">
                           <div>In: {formatTime(session.entryTime)}</div>
                           <div className="text-slate-500">
-                            Out: {formatTime(session.scheduledExitTime)}
+                            Allotted out: {formatTime(session.scheduledExitTime)}
                           </div>
+                          {session.actualExitTime && (
+                            <div className="text-emerald-700 font-bold">
+                              Exited: {formatTime(session.actualExitTime)}
+                            </div>
+                          )}
                         </td>
 
                         {/* Live Timer */}

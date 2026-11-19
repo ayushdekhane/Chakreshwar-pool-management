@@ -80,8 +80,19 @@ export const ReceiptModal: React.FC = () => {
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-slate-500">Time Slot:</span>
-              <span>{formatTime(session.entryTime)} to {formatTime(session.scheduledExitTime)}</span>
+              <span className="text-slate-500">Entry Time:</span>
+              <span>{formatTime(session.entryTime)}</span>
+            </div>
+           
+            {session.actualExitTime && (
+              <div className="flex justify-between">
+                <span className="text-slate-500">Actual Exit:</span>
+                <span className="font-bold text-slate-800">{formatTime(session.actualExitTime)}</span>
+              </div>
+            )}
+             <div className="flex justify-between">
+              <span className="text-slate-500">Allotted Exit:</span>
+              <span>{formatTime(session.scheduledExitTime)}</span>
             </div>
           </div>
 

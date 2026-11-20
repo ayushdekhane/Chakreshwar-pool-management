@@ -1,8 +1,10 @@
 import React from 'react';
 import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { usePwa } from '../../hooks/usePwa';
+import { usePoolStore } from '../../store/usePoolStore';
 
 export const UpdatePromptModal: React.FC = () => {
+  const businessName = usePoolStore((state) => state.settings.businessName);
   const { needRefresh, updateServiceWorker, dismissUpdate } = usePwa();
 
   if (!needRefresh) {
@@ -21,7 +23,7 @@ export const UpdatePromptModal: React.FC = () => {
               New version available
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
-              Update Chakreshwar pool  to get the latest improvements.
+              Update {businessName} to get the latest improvements.
             </p>
           </div>
         </div>
@@ -52,4 +54,3 @@ export const UpdatePromptModal: React.FC = () => {
     </div>
   );
 };
-

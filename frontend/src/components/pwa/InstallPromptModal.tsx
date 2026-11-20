@@ -1,8 +1,10 @@
 import React from 'react';
 import { Download, X, Share, PlusSquare } from 'lucide-react';
 import { usePwa } from '../../hooks/usePwa';
+import { usePoolStore } from '../../store/usePoolStore';
 
 export const InstallPromptModal: React.FC = () => {
+  const businessName = usePoolStore((state) => state.settings.businessName);
   const {
     isInstallable,
     isInstalled,
@@ -25,7 +27,7 @@ export const InstallPromptModal: React.FC = () => {
           </div>
           <div>
             <h4 className="text-sm font-bold text-slate-900 leading-snug">
-              Install Chakreshwar Pool Dashboard
+              Install {businessName} Dashboard
             </h4>
             <p className="text-xs text-slate-500 mt-0.5">
               Get quick access to pool operations directly from your device.

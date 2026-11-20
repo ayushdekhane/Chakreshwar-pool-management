@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 export const Payments: React.FC = () => {
   const payments = usePoolStore((state) => state.payments);
   const sessions = usePoolStore((state) => state.sessions);
+  const businessName = usePoolStore((state) => state.settings.businessName);
   const openModal = usePoolStore((state) => state.openModal);
   const deletePayment = usePoolStore((state) => state.deletePayment);
 
@@ -88,7 +89,8 @@ export const Payments: React.FC = () => {
       Timestamp: p.timestamp,
       Status: p.status,
     }));
-    exportToCsv('Chakreshwar_Payments_Ledger', exportData);
+    const safeBusinessName = businessName.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+    exportToCsv(`${safeBusinessName || 'Pool'}_Payments_Ledger`, exportData);
     toast.success('Payments ledger exported to CSV!');
   };
 
@@ -108,7 +110,8 @@ export const Payments: React.FC = () => {
       Timestamp: p.timestamp,
       Status: p.status,
     }));
-    exportToExcel('Chakreshwar_Payments_Ledger', [
+    const safeBusinessName = businessName.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+    exportToExcel(`${safeBusinessName || 'Pool'}_Payments_Ledger`, [
       { sheetName: 'Payments', data: exportData },
     ]);
     toast.success('Payments ledger exported to Excel (.xlsx)!');

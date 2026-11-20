@@ -33,7 +33,7 @@ export const ReceiptModal: React.FC = () => {
       isOpen={activeModal === 'receipt_modal'}
       onClose={closeModal}
       title="Official Pool Admission Receipt"
-      subtitle="Chakreshwar Swimming Pool · Guest Tax Invoice"
+      subtitle={`${settings.businessName} · Guest Tax Invoice`}
       maxWidth="md"
     >
       <div className="space-y-4">
@@ -46,7 +46,7 @@ export const ReceiptModal: React.FC = () => {
           <div className="text-center pb-3 border-b-2 border-dashed border-slate-300">
             <div className="flex items-center justify-center gap-1.5 text-base font-extrabold text-[#087FA5]">
               <Waves className="pw-5 h-5 text-[#087FA5]" />
-              <span>CHAKRESHWAR POOL</span>
+              <span>{settings.businessName}</span>
             </div>
             <p className="text-[10px] text-slate-500 mt-0.5">{settings.address}</p>
             <p className="text-[10px] text-slate-500">Phone: {settings.phone} · GSTIN: {settings.gstNumber}</p>
@@ -157,7 +157,7 @@ export const ReceiptModal: React.FC = () => {
 
           {/* Footer note */}
           <div className="text-center pt-3 border-t border-dashed border-slate-200 text-[10px] text-slate-500 space-y-1">
-            <p>Thank you for choosing Chakreshwar Swimming Pool!</p>
+            <p>Thank you for choosing {settings.businessName}!</p>
             <p>Please return all rental gear and locker keys before leaving.</p>
             <p className="font-sans text-[9px] text-slate-400">Generated via Chakreshwar Swimming Desk OS</p>
           </div>

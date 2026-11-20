@@ -24,6 +24,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
 }) => {
   const setCurrentUser = usePoolStore((state) => state.setCurrentUser);
   const fetchAllData = usePoolStore((state) => state.fetchAllData);
+  const businessName = usePoolStore((state) => state.settings.businessName);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -124,7 +125,7 @@ export const StaffAuthScreen: React.FC<StaffAuthScreenProps> = ({
             <Waves className="w-8 h-8 text-white animate-pulse" />
           </div>
           <h1 className="text-2xl font-black text-[#171717] tracking-tight">
-CHAKRESHWAR <span className="text-[#087FA5]">POOL</span>
+            {businessName}
           </h1>
           <p className="text-xs font-semibold text-[#64748B] tracking-wider uppercase mt-0.5">
             {/* Swimming Pool Management System · Staff Portal */}

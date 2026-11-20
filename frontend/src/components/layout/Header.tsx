@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenMobileMenu }) => {
         </button>
 
         <div className="hidden sm:flex items-center gap-2 text-xs text-[#64748B]">
-          <span className="font-semibold text-[#087FA5]">Chakreshwar Pool </span>
+          <span className="font-semibold text-[#087FA5]">{settings.businessName}</span>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
           <span className="font-medium text-slate-700">Swimming Pool Operations</span>
         </div>

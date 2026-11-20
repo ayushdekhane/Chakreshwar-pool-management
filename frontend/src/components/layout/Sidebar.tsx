@@ -118,10 +118,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
           </div>
           <div className="flex flex-col min-w-0">
             <span className="font-extrabold text-sm tracking-tight text-[#171717] truncate flex items-center gap-1.5">
-              CHAKRESHWAR<span className="text-[#087FA5] font-black">POOL</span>
+              {/* {settings.businessName} */}
+              Chakreshwar Pool
             </span>
             <span className="text-[11px] font-semibold text-[#64748B] tracking-wider uppercase truncate">
-              Swimming Pool Arena
+               Pool Arena
             </span>
           </div>
         </div>
@@ -317,4 +318,3 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     </>
   );
 };
-

@@ -311,7 +311,7 @@ export const Settings: React.FC = () => {
   const handleExportJson = () => {
     const exportPayload = {
       timestamp: new Date().toISOString(),
-      club: 'Chakreshwar Swimming Pool',
+      club: settings.businessName,
       sessions: allState.sessions,
       payments: allState.payments,
       rentals: allState.rentals,
@@ -325,7 +325,8 @@ export const Settings: React.FC = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Chakreshwar_Pool_Data_${new Date().toISOString().split('T')[0]}.json`;
+    const safeBusinessName = settings.businessName.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
+    a.download = `${safeBusinessName || 'Pool'}_Data_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Demonstration records exported to JSON!');
@@ -385,7 +386,7 @@ export const Settings: React.FC = () => {
           <form onSubmit={handleSave} className="space-y-5">
             <div>
               <h3 className="text-base font-bold text-slate-900 mb-1">
-                 Chakreshwar Pool  Profile
+                {settings.businessName} Profile
               </h3>
               <p className="text-xs text-slate-500">
                 Official branding information displayed on swimmer invoices, receipts, and headers
@@ -402,7 +403,7 @@ export const Settings: React.FC = () => {
                   Official Club Crest & Emblem
                 </span>
                 <span className="text-xs text-slate-500">
-                  Vector SVG Brandmark · Chakreshwar Pool Operations
+                  Vector SVG Brandmark · {settings.businessName} Operations
                 </span>
               </div>
             </div>

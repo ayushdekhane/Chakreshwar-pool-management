@@ -35,10 +35,12 @@ export const CheckoutModal: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [returnedRentalIds, setReturnedRentalIds] = useState<Record<string, boolean>>({});
   const [lockerKeyReturned, setLockerKeyReturned] = useState(false);
+  const [paymentCollected, setPaymentCollected] = useState(false);
 
   useEffect(() => {
     setReturnedRentalIds({});
     setLockerKeyReturned(false);
+    setPaymentCollected(false);
   }, [selectedSessionId]);
 
   useEffect(() => {
@@ -114,6 +116,14 @@ export const CheckoutModal: React.FC = () => {
       }
       const parsedAmount = parseFloat(payAmount);
       const amountToCollect = isNaN(parsedAmount) ? 0 : Math.max(0, parsedAmount);
+      if (hasPendingDue && !paymentCollected) {
+        toast.error('Confirm that the outstanding payment has been collected before checkout.');
+        return;
+      }
+      if (hasPendingDue && amountToCollect <= 0) {
+        toast.error('Enter the amount collected before checkout.');
+        return;
+      }
 
       await returnCheckedEquipment();
       await checkoutAndPaySession({
@@ -378,6 +388,20 @@ export const CheckoutModal: React.FC = () => {
                 />
               </div>
             </div>
+
+            <label className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 cursor-pointer">
+              <input
+                type="checkbox"
+                required
+                checked={paymentCollected}
+                onChange={(event) => setPaymentCollected(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500"
+              />
+              <span>
+                I confirm that <strong>{formatCurrency(Number(payAmount) || effectiveOutstanding)}</strong> has
+                been collected from the swimmer.
+              </span>
+            </label>
           </div>
         ) : (
           <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">

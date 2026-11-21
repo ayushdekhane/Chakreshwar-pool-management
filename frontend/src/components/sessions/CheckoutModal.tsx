@@ -245,6 +245,15 @@ export const CheckoutModal: React.FC = () => {
               <span className="text-slate-500 text-[10px] block">Total Bill</span>
               <span className="font-bold text-slate-800">{formatCurrency(session.totalCharges)}</span>
             </div>
+            {(session.lockerCharges || 0) > 0 && (
+              <div className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-900">
+                <span className="font-bold">Locker amount:</span>{' '}
+                {formatCurrency(session.lockerCharges || 0)}
+                {session.lockerNumbers && session.lockerNumbers.length > 0
+                  ? ` · Locker${session.lockerNumbers.length === 1 ? '' : 's'} ${session.lockerNumbers.join(', ')}`
+                  : ''}
+              </div>
+            )}
             {penaltyAmount > 0 && (
               <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 <span className="font-bold">Overtime penalty:</span>{' '}

@@ -1,69 +1,121 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { PlusCircle, Shirt } from 'lucide-react';
 import { toast } from 'sonner';
-import { Shirt, PlusCircle } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
 import { formatCurrency } from '../../utils';
+
+type SelectedAccessory = {
+  equipmentId: string;
+  quantity: number;
+  size?: string;
+};
+
+const getAccessoryKey = (equipmentId: string) => equipmentId;
 
 export const RentEquipmentModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
   const selectedSessionId = usePoolStore((state) => state.selectedSessionId);
   const closeModal = usePoolStore((state) => state.closeModal);
   const sessions = usePoolStore((state) => state.sessions);
-  const equipment = usePoolStore((state) =>
-    state.equipment.filter((item) => item.equipmentType === 'rental')
-  );
+  const equipment = usePoolStore((state) => state.equipment);
   const issueRental = usePoolStore((state) => state.issueRental);
+  const selectedEquipmentType = usePoolStore((state) => state.selectedEquipmentType);
 
-  const [sessionId, setSessionId] = useState<string>(selectedSessionId || '');
-  const [guestName, setGuestName] = useState<string>('');
-  const [equipmentId, setEquipmentId] = useState<string>(equipment[0]?.id || '');
-  const [size, setSize] = useState<string | undefined>(equipment[0]?.sizes[0]);
-  const [quantity, setQuantity] = useState<number>(1);
-  const [customPrice, setCustomPrice] = useState<string>('');
-  const [notes, setNotes] = useState<string>('');
+  const [sessionId, setSessionId] = useState('');
+  const [guestName, setGuestName] = useState('');
+  const [notes, setNotes] = useState('');
+  const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
+  const [selectedAccessories, setSelectedAccessories] = useState<Record<string, SelectedAccessory>>({});
+  const [submitting, setSubmitting] = useState(false);
 
-  const selectedEq = equipment.find((e) => e.id === equipmentId) || equipment[0];
-  const activeSession = sessions.find((s) => s.id === sessionId);
+  useEffect(() => {
+    if (activeModal !== 'rent_equipment') return;
+    setSessionId(selectedSessionId || '');
+    setGuestName('');
+    setNotes('');
+    setEquipmentType(selectedEquipmentType || 'rental');
+    setSelectedAccessories({});
+  }, [activeModal, selectedSessionId, selectedEquipmentType]);
 
-  const pricePerItem = customPrice !== '' ? parseFloat(customPrice) || 0 : selectedEq?.defaultRate || 50;
-  const totalRental = pricePerItem * quantity;
+  const activeSession = sessions.find((session) => session.id === sessionId);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedEq) {
-      toast.error('Add equipment to inventory before issuing a rental.');
-      return;
-    }
+  const availableItems = equipment
+    .filter((item) =>
+      equipmentType === 'rental'
+        ? item.equipmentType === 'rental'
+        : item.availableForSale
+    )
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const combinedCharge = Object.values(selectedAccessories).reduce((total, selection) => {
+    const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+    const rate = equipmentType === 'sale'
+      ? item?.saleRate ?? item?.defaultRate ?? 0
+      : item?.defaultRate ?? 0;
+    return total + rate * selection.quantity;
+  }, 0);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     if (!sessionId && !guestName.trim()) {
-      toast.error('Please assign rental to an active session or enter guest name.');
+      toast.error('Please assign equipment to an active session or enter a guest name.');
       return;
     }
-    if (quantity <= 0) {
-      toast.error('Quantity must be at least 1.');
+    if (Object.keys(selectedAccessories).length === 0) {
+      toast.error('Select at least one equipment item.');
       return;
     }
 
-    const assignedName = activeSession ? activeSession.customerName : guestName;
+    const selections = Object.values(selectedAccessories);
+    for (const selection of selections) {
+      const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+      if (!item) {
+        toast.error('One or more selected items are no longer available.');
+        return;
+      }
+      if (
+        !Number.isInteger(selection.quantity) ||
+        selection.quantity < 1 ||
+        selection.quantity > item.availableStock
+      ) {
+        toast.error(`Quantity for ${item.name} exceeds available stock.`);
+        return;
+      }
+    }
 
+    setSubmitting(true);
     try {
-      const rnt = await issueRental({
-        sessionId: activeSession?.id,
-        customerId: activeSession?.customerId,
-        customerName: assignedName,
-        equipmentId: selectedEq.id,
-        size,
-        quantity,
-        pricePerItem,
-        notes,
-      });
+      for (const selection of selections) {
+        const item = equipment.find((candidate) => candidate.id === selection.equipmentId);
+        if (!item) continue;
+        const rate = equipmentType === 'sale'
+          ? item.saleRate ?? item.defaultRate ?? 0
+          : item.defaultRate ?? 0;
 
-      toast.success(`Issued ${quantity}x ${selectedEq.name} to ${assignedName}!`, {
-        description: `Rental ID: ${rnt.id}. Rental charge: ${formatCurrency(totalRental)}.`,
-      });
+        await issueRental({
+          sessionId: activeSession?.id,
+          customerId: activeSession?.customerId,
+          customerName: activeSession?.customerName || guestName.trim(),
+          equipmentId: item.id,
+          size: selection.size,
+          quantity: selection.quantity,
+          pricePerItem: rate,
+          notes,
+          transactionType: equipmentType,
+        });
+      }
+
+      toast.success(
+        `${equipmentType === 'sale' ? 'Sold' : 'Issued'} ${selections.length} equipment type(s)!`,
+        { description: `Combined charge: ${formatCurrency(combinedCharge)}.` }
+      );
       closeModal();
-    } catch (err: any) {
-      toast.error(err?.message || 'Failed to issue rental.');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to add equipment.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -71,31 +123,29 @@ export const RentEquipmentModal: React.FC = () => {
     <Modal
       isOpen={activeModal === 'rent_equipment'}
       onClose={closeModal}
-      title="Issue Equipment Rental"
-      subtitle="Rent costumes, goggles, towels and floats to pool guests"
-      maxWidth="lg"
+      title={equipmentType === 'sale' ? 'Sell Equipment' : 'Rent Equipment'}
+      subtitle="Add one or more costumes, goggles, towels or floats"
+      maxWidth="2xl"
     >
-      {selectedEq ? (
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Guest or Session Target */}
         <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
           <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
             Attach to Active Session
           </label>
           <select
             value={sessionId}
-            onChange={(e) => {
-              setSessionId(e.target.value);
-              if (e.target.value) setGuestName('');
+            onChange={(event) => {
+              setSessionId(event.target.value);
+              if (event.target.value) setGuestName('');
             }}
             className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
           >
-            <option value="">-- Standalone Rental (No Active Session) --</option>
+            <option value="">-- Standalone (No Active Session) --</option>
             {sessions
-              .filter((s) => s.status !== 'completed' && s.status !== 'cancelled')
-              .map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.customerName} (#{s.id}) - {s.type === 'group' ? s.groupName : 'Individual'}
+              .filter((session) => session.status !== 'completed' && session.status !== 'cancelled')
+              .map((session) => (
+                <option key={session.id} value={session.id}>
+                  {session.customerName} (#{session.id}) - {session.type === 'group' ? session.groupName : 'Individual'}
                 </option>
               ))}
           </select>
@@ -103,105 +153,125 @@ export const RentEquipmentModal: React.FC = () => {
           {!sessionId && (
             <div className="mt-3">
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Guest Name (Standalone Rental) *
+                Guest Name *
               </label>
               <input
                 type="text"
-                placeholder="e.g. Sneha Rao"
                 value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
+                onChange={(event) => setGuestName(event.target.value)}
+                placeholder="Guest name"
                 className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
               />
             </div>
           )}
         </div>
 
-        {/* Equipment Selection */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Equipment Item *
-            </label>
-            <select
-              value={equipmentId}
-              onChange={(e) => {
-                setEquipmentId(e.target.value);
-                const eq = equipment.find((item) => item.id === e.target.value);
-                setSize(eq?.sizes[0]);
-                setQuantity(1);
-                setCustomPrice('');
-              }}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-medium"
-            >
-              {equipment.map((eq) => (
-                <option key={eq.id} value={eq.id}>
-                  {eq.name} (Avail: {eq.availableStock}/{eq.totalStock})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {selectedEq.sizes.length > 0 ? <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Size
-            </label>
-            <select
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
-            >
-              {selectedEq.sizes.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div> : (
-            <div className="flex items-center text-xs text-slate-500">
-              Size not applicable for this equipment.
-            </div>
-          )}
-        </div>
-
-        {/* Quantity & Rate */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Quantity
-            </label>
-            <input
-              type="number"
-              min="1"
-              max={selectedEq.availableStock}
-              value={quantity}
-              onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-bold"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Rate per Item (₹)
-            </label>
-            <input
-              type="number"
-              value={customPrice !== '' ? customPrice : selectedEq.defaultRate}
-              onChange={(e) => setCustomPrice(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white font-bold text-[#087FA5]"
-            />
-          </div>
-
-        </div>
-
-        {/* Total Summary */}
-        <div className="p-3.5 rounded-xl bg-slate-900 text-white flex items-center justify-between text-xs">
-          <div>
-            <span className="text-slate-400 block text-[11px]">Rental Fee</span>
-            <span className="text-base font-extrabold text-[#EFB33A]">
-              {formatCurrency(totalRental)}
+        <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Shirt className="w-4 h-4 text-[#087FA5]" />
+              Add Equipment
+            </span>
+            <span className="text-xs font-bold text-[#087FA5]">
+              +{formatCurrency(combinedCharge)}
             </span>
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+            {availableItems.map((item) => {
+              const key = getAccessoryKey(item.id);
+              const selected = selectedAccessories[key];
+              const rate = equipmentType === 'sale'
+                ? item.saleRate ?? item.defaultRate
+                : item.defaultRate;
+
+              return (
+                <div
+                  key={item.id}
+                  className="flex min-w-0 flex-col items-stretch gap-2 rounded-lg bg-white border border-slate-200 p-2.5"
+                >
+                  <label className="flex min-w-0 items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(selected)}
+                      disabled={item.availableStock < 1}
+                      onChange={(event) => {
+                        setSelectedAccessories((current) => {
+                          if (event.target.checked) {
+                            return {
+                              ...current,
+                              [key]: {
+                                equipmentId: item.id,
+                                quantity: 1,
+                                size: item.sizes[0],
+                              },
+                            };
+                          }
+                          const next = { ...current };
+                          delete next[key];
+                          return next;
+                        });
+                      }}
+                      className="w-4 h-4 rounded text-[#087FA5]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-xs font-semibold text-slate-800">
+                        {item.name}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        {equipmentType === 'rental' ? 'Rental fee' : 'Sale price'}:{' '}
+                        {formatCurrency(rate)} each · Available: {item.availableStock}
+                      </span>
+                    </span>
+                  </label>
+
+                  {selected && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {item.sizes.length > 0 && (
+                        <select
+                          value={selected.size || item.sizes[0]}
+                          onChange={(event) =>
+                            setSelectedAccessories((current) => ({
+                              ...current,
+                              [key]: { ...selected, size: event.target.value },
+                            }))
+                          }
+                          className="px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                        >
+                          {item.sizes.map((size) => (
+                            <option key={size} value={size}>{size}</option>
+                          ))}
+                        </select>
+                      )}
+                      <input
+                        type="number"
+                        min="1"
+                        max={item.availableStock}
+                        value={selected.quantity}
+                        onChange={(event) =>
+                          setSelectedAccessories((current) => ({
+                            ...current,
+                            [key]: {
+                              ...selected,
+                              quantity: Math.max(1, parseInt(event.target.value, 10) || 1),
+                            },
+                          }))
+                        }
+                        className="px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                        placeholder="Qty"
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {availableItems.length === 0 && (
+            <p className="py-4 text-center text-xs text-slate-500">
+              No {equipmentType === 'sale' ? 'sale' : 'rental'} equipment is available.
+            </p>
+          )}
         </div>
 
         <div>
@@ -210,14 +280,24 @@ export const RentEquipmentModal: React.FC = () => {
           </label>
           <input
             type="text"
-            placeholder="e.g. Locker #24 key provided"
             value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="e.g. Locker #24 key provided"
             className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
           />
         </div>
 
-        {/* Actions */}
+        <div className="p-3.5 rounded-xl bg-slate-900 text-white flex items-center justify-between text-xs">
+          <div>
+            <span className="text-slate-400 block text-[11px]">
+              {equipmentType === 'sale' ? 'Sale Charge' : 'Rental Fee'}
+            </span>
+            <span className="text-base font-extrabold text-[#EFB33A]">
+              {formatCurrency(combinedCharge)}
+            </span>
+          </div>
+        </div>
+
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="button"
@@ -228,22 +308,18 @@ export const RentEquipmentModal: React.FC = () => {
           </button>
           <button
             type="submit"
-            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl shadow-md active:scale-95 transition-all"
+            disabled={submitting}
+            className="flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold text-white bg-[#087FA5] hover:bg-[#066382] rounded-xl disabled:opacity-60"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>Issue Rental Items</span>
+            {submitting
+              ? 'Adding...'
+              : equipmentType === 'sale'
+                ? 'Issue Sale Items'
+                : 'Issue Rental Items'}
           </button>
         </div>
       </form>
-      ) : (
-        <div className="flex flex-col items-center text-center py-8">
-          <Shirt className="w-10 h-10 text-slate-400 mb-3" />
-          <h4 className="text-sm font-bold text-slate-800">No equipment available</h4>
-          <p className="text-xs text-slate-500 mt-1">
-            Add equipment to inventory before issuing a rental.
-          </p>
-        </div>
-      )}
     </Modal>
   );
 };

@@ -509,12 +509,7 @@ export const Sessions: React.FC = () => {
                 Track issued rentals, sold items, and partial returns
               </p>
             </div>
-            <button
-              onClick={() => openModal('rent_equipment')}
-              className="px-3.5 py-1.5 bg-[#087FA5] hover:bg-[#066382] text-white rounded-xl text-xs font-bold shadow-sm"
-            >
-              + Issue New Rental
-            </button>
+            
           </div>
 
           <div className="overflow-x-auto">

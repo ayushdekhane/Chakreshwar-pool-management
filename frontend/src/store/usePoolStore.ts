@@ -76,6 +76,7 @@ interface PoolStore {
     | 'return_equipment'
     | 'extend_session'
     | 'session_details'
+    | 'rent_locker'
     | 'monthly_entry'
     | 'package_modal'
     | 'receipt_modal'
@@ -87,6 +88,7 @@ interface PoolStore {
   selectedPaymentId: string | null;
   selectedPackage: Package | null;
   selectedPackageKind: 'regular' | 'monthly' | null;
+  selectedEquipmentType: 'rental' | 'sale' | null;
 
   // Modal actions
   openModal: (
@@ -97,6 +99,7 @@ interface PoolStore {
       paymentId?: string;
       pkg?: Package;
       packageKind?: 'regular' | 'monthly';
+      equipmentType?: 'rental' | 'sale';
     }
   ) => void;
   closeModal: () => void;
@@ -169,6 +172,7 @@ interface PoolStore {
 
   cancelSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  updateSessionLockers: (sessionId: string, lockerNumbers: number[]) => Promise<void>;
 
   // Payment Operations
   recordPayment: (data: {
@@ -193,6 +197,7 @@ interface PoolStore {
     quantity: number;
     pricePerItem: number;
     notes?: string;
+    transactionType?: 'rental' | 'sale';
   }) => Promise<RentalItem>;
 
   processReturn: (
@@ -502,6 +507,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   selectedPaymentId: null,
   selectedPackage: null,
   selectedPackageKind: null,
+  selectedEquipmentType: null,
 
   openModal: (modal, payload) =>
     set({
@@ -511,6 +517,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       selectedPaymentId: payload?.paymentId || null,
       selectedPackage: payload?.pkg || null,
       selectedPackageKind: payload?.packageKind || null,
+      selectedEquipmentType: payload?.equipmentType || null,
     }),
 
   closeModal: () =>
@@ -1284,7 +1291,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       entry_time: now.toISOString(),
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
-      session_amount: data.totalPrice,
+      session_amount: Math.max(0, data.totalPrice - lockerCharge),
       locker_charges: lockerCharge,
       costume_used: selectedRentals.length > 0,
       locker_numbers: lockerNumbers,
@@ -1527,7 +1534,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       scheduledExitTime: scheduledExit,
       lockerNumbers,
       status: 'active',
-      swimmingCharges: data.totalPrice,
+      swimmingCharges: Math.max(0, data.totalPrice - lockerCharge),
       lockerCharges: lockerCharge,
       extensionCharges: 0,
       rentalCharges: rentalCharge,
@@ -1778,6 +1785,89 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     }));
   },
 
+  updateSessionLockers: async (sessionId, lockerNumbers) => {
+    const session = get().sessions.find((item) => item.id === sessionId);
+    if (!session) throw new Error('Session was not found.');
+    if (session.status === 'completed' || session.status === 'cancelled') {
+      throw new Error('Lockers cannot be changed for a completed or cancelled session.');
+    }
+
+    const lockerCount = get().settings.lockerCount;
+    const selected = [...new Set(lockerNumbers)].sort((a, b) => a - b);
+    const existingLockers = [...new Set(session.lockerNumbers || [])].sort((a, b) => a - b);
+    const removedExistingLocker = existingLockers.find(
+      (lockerNumber) => !selected.includes(lockerNumber)
+    );
+    if (removedExistingLocker) {
+      throw new Error(`Locker ${removedExistingLocker} is already assigned and cannot be changed.`);
+    }
+    if (selected.some((number) => number < 1 || number > lockerCount)) {
+      throw new Error('One or more selected lockers are outside the configured locker range.');
+    }
+
+    const occupiedByOthers = new Set(
+      get().sessions
+        .filter((item) =>
+          item.id !== sessionId &&
+          (item.status === 'active' || item.status === 'expiring' || item.status === 'expired')
+        )
+        .flatMap((item) => item.lockerNumbers || [])
+    );
+    const conflict = selected.find((number) => occupiedByOthers.has(number));
+    if (conflict) throw new Error(`Locker ${conflict} is currently occupied.`);
+
+    const pkg = get().packages.find((item) => item.id === session.packageId);
+    const newLockerCount = selected.filter(
+      (lockerNumber) => !existingLockers.includes(lockerNumber)
+    ).length;
+    const lockerCharge = (session.lockerCharges || 0) + newLockerCount * (pkg?.lockerPrice ?? 0);
+    const updatePayload = {
+      locker_numbers: selected,
+      locker_charges: lockerCharge,
+    };
+
+    if (isValidUuid(sessionId) && isSupabaseConfigured && connectivity.isOnline()) {
+      try {
+        await sessionService.updateSession(sessionId, updatePayload);
+      } catch (error: any) {
+        await syncQueue.enqueue({
+          entityType: 'session',
+          entityId: sessionId,
+          operation: 'update',
+          payload: updatePayload,
+        });
+        toast.warning('Locker assignment saved locally. It will synchronize later.');
+      }
+    } else if (isValidUuid(sessionId)) {
+      await syncQueue.enqueue({
+        entityType: 'session',
+        entityId: sessionId,
+        operation: 'update',
+        payload: updatePayload,
+      });
+    }
+
+    set((state) => ({
+      sessions: state.sessions.map((item) => {
+        if (item.id !== sessionId) return item;
+        const newTotal = item.swimmingCharges + lockerCharge + item.rentalCharges +
+          (item.extensionCharges || 0) + (item.penaltyCharges || 0);
+        return {
+          ...item,
+          lockerNumbers: selected,
+          lockerCharges: lockerCharge,
+          totalCharges: newTotal,
+          outstandingBalance: Math.max(0, newTotal - item.paidAmount),
+          paymentStatus: item.paidAmount >= newTotal
+            ? 'paid'
+            : item.paidAmount > 0
+              ? 'partial'
+              : 'unpaid',
+        };
+      }),
+    }));
+  },
+
   deleteSession: async (sessionId) => {
     const session = get().sessions.find((s) => s.id === sessionId);
     const sessionsToRemove = session?.groupCode
@@ -2008,8 +2098,12 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const now = new Date();
     const eq = get().equipment.find((e) => e.id === data.equipmentId);
     if (!eq) throw new Error('Selected accessory is not available.');
-    if (eq.equipmentType !== 'rental') {
-      throw new Error('Only rental equipment can be issued through the rental desk.');
+    const transactionType = data.transactionType || eq.equipmentType;
+    if (
+      transactionType === 'sale' &&
+      !eq.availableForSale
+    ) {
+      throw new Error(`${eq.name} is not available for sale.`);
     }
     if (!Number.isInteger(data.quantity) || data.quantity < 1 || data.quantity > eq.availableStock) {
       throw new Error(`Requested quantity for ${eq.name} exceeds available stock.`);
@@ -2031,7 +2125,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
           item_name: eq?.name || data.equipmentId,
           customer_name: data.customerName,
           size: data.size,
-          equipment_type: 'rental',
+          equipment_type: transactionType,
           quantity: data.quantity,
           rental_charge: totalAmount,
         });
@@ -2057,7 +2151,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         item_name: eq?.name || data.equipmentId,
         customer_name: data.customerName,
         size: data.size,
-        equipment_type: 'rental' as const,
+        equipment_type: transactionType,
         quantity: data.quantity,
         rental_charge: totalAmount,
       };
@@ -2091,7 +2185,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       customerName: data.customerName,
       equipmentId: data.equipmentId,
       equipmentName: eq?.name || 'Equipment',
-      equipmentType: 'rental',
+      equipmentType: transactionType,
       size: data.size,
       quantity: data.quantity,
       returnedQuantity: 0,
@@ -2099,7 +2193,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       totalRentalAmount: totalAmount,
       securityDeposit: 0,
       issueTimestamp: now.toISOString(),
-      status: 'active',
+      status: transactionType === 'sale' ? 'sold' : 'active',
       notes: data.notes,
     };
 

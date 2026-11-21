@@ -8,6 +8,8 @@ interface LockerSelectorProps {
   selectedLockers: number[];
   onChange: (lockers: number[]) => void;
   accentClassName?: string;
+  currentSessionId?: string;
+  lockedLockerNumbers?: number[];
 }
 
 export const LockerSelector: React.FC<LockerSelectorProps> = ({
@@ -16,19 +18,25 @@ export const LockerSelector: React.FC<LockerSelectorProps> = ({
   selectedLockers,
   onChange,
   accentClassName = 'text-[#087FA5]',
+  currentSessionId,
+  lockedLockerNumbers = [],
 }) => {
   const lockerCount = Math.max(0, Math.floor(settings.lockerCount || 0));
+  const lockedLockers = new Set(lockedLockerNumbers);
   const occupiedLockers = new Set(
     sessions
       .filter((session) =>
-        session.status === 'active' ||
-        session.status === 'expiring' ||
-        session.status === 'expired'
+        session.id !== currentSessionId &&
+        (
+          session.status === 'active' ||
+          session.status === 'expiring' ||
+          session.status === 'expired'
+        )
       )
       .flatMap((session) => session.lockerNumbers || [])
   );
   const toggleLocker = (lockerNumber: number) => {
-    if (occupiedLockers.has(lockerNumber)) return;
+    if (occupiedLockers.has(lockerNumber) || lockedLockers.has(lockerNumber)) return;
     onChange(
       selectedLockers.includes(lockerNumber)
         ? selectedLockers.filter((number) => number !== lockerNumber)
@@ -52,12 +60,13 @@ export const LockerSelector: React.FC<LockerSelectorProps> = ({
       >
         {Array.from({ length: lockerCount }, (_, index) => index + 1).map((lockerNumber) => {
           const isOccupied = occupiedLockers.has(lockerNumber);
+          const isLocked = lockedLockers.has(lockerNumber);
           const isSelected = selectedLockers.includes(lockerNumber);
           return (
             <button
               key={lockerNumber}
               type="button"
-              disabled={isOccupied}
+              disabled={isOccupied || isLocked}
               onClick={() => toggleLocker(lockerNumber)}
               className={`relative min-h-14 aspect-[1.35] rounded-xl border-2 flex flex-col items-center justify-center gap-1 text-sm font-bold transition-colors ${
                 isOccupied
@@ -68,7 +77,7 @@ export const LockerSelector: React.FC<LockerSelectorProps> = ({
               }`}
               aria-label={`Locker ${lockerNumber}${isOccupied ? ', occupied' : isSelected ? ', selected' : ', available'}`}
             >
-              {isOccupied ? (
+              {isOccupied || isLocked ? (
                 <Lock className="absolute right-1.5 top-1.5 w-3.5 h-3.5" />
               ) : (
                 <Unlock className="w-4 h-4" />

@@ -26,6 +26,7 @@ import { PackageModal } from '../packages/PackageModal';
 import { ReceiptModal } from '../common/ReceiptModal';
 import { StaffLoginModal } from '../common/StaffLoginModal';
 import { CheckoutModal } from '../sessions/CheckoutModal';
+import { LockerAssignmentModal } from '../sessions/LockerAssignmentModal';
 
 export const Layout: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -212,6 +213,7 @@ export const Layout: React.FC = () => {
       <ReceiptModal />
       <StaffLoginModal />
       <CheckoutModal />
+      <LockerAssignmentModal />
 
       {/* PWA Prompts */}
       <InstallPromptModal />

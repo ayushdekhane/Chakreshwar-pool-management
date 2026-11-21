@@ -14,6 +14,7 @@ import {
   AlertOctagon,
   Users,
   Trash2,
+  LockKeyhole,
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
@@ -171,6 +172,12 @@ export const SessionDetailsModal: React.FC = () => {
               <span className="text-slate-500 block">Equipment Charges</span>
               <span className="font-bold text-slate-800 text-sm">
                 {formatCurrency(session.rentalCharges)}
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-500 block">Locker Charges</span>
+              <span className="font-bold text-[#087FA5] text-sm">
+                {formatCurrency(session.lockerCharges || 0)}
               </span>
             </div>
             {session.penaltyApplied && (session.penaltyCharges || 0) > 0 && (
@@ -339,6 +346,27 @@ export const SessionDetailsModal: React.FC = () => {
                 >
                   <Shirt className="w-3.5 h-3.5 text-purple-600" />
                   <span>Rent Equipment</span>
+                </button>
+
+                <button
+                  onClick={() =>
+                    openModal('rent_equipment', {
+                      sessionId: session.id,
+                      equipmentType: 'sale',
+                    })
+                  }
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                >
+                  <Shirt className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Sell Equipment</span>
+                </button>
+
+                <button
+                  onClick={() => openModal('rent_locker', { sessionId: session.id })}
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-xl"
+                >
+                  <LockKeyhole className="w-3.5 h-3.5 text-[#087FA5]" />
+                  <span>{session.lockerNumbers && session.lockerNumbers.length > 0 ? 'Add Locker' : 'Add Locker'}</span>
                 </button>
               </>
             )}

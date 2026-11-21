@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 
 export const Sessions: React.FC = () => {
   const sessions = usePoolStore((state) => state.sessions);
+  const packages = usePoolStore((state) => state.packages);
   const rentals = usePoolStore((state) => state.rentals);
   const openModal = usePoolStore((state) => state.openModal);
   const completeSession = usePoolStore((state) => state.completeSession);
@@ -51,14 +52,22 @@ export const Sessions: React.FC = () => {
   const [dateFilter, setDateFilter] = useState<string>('');
 
   // Top statistics
-  const activeCount = sessions.filter((s) => s.status === 'active' || s.status === 'expiring').length;
-  const expiringSoonCount = sessions.filter((s) => s.status === 'expiring').length;
-  const expiredCount = sessions.filter((s) => s.status === 'expired').length;
-  const completedTodayCount = sessions.filter((s) => s.status === 'completed').length;
-  const totalSwimmers = sessions.reduce((acc, s) => acc + s.peopleCount, 0);
+  const monthlyPackageIds = new Set(
+    packages
+      .filter((pkg) => pkg.packageKind === 'monthly')
+      .map((pkg) => pkg.id)
+  );
+  const regularSessions = sessions.filter(
+    (session) => !monthlyPackageIds.has(session.packageId)
+  );
+  const activeCount = regularSessions.filter((s) => s.status === 'active' || s.status === 'expiring').length;
+  const expiringSoonCount = regularSessions.filter((s) => s.status === 'expiring').length;
+  const expiredCount = regularSessions.filter((s) => s.status === 'expired').length;
+  const completedTodayCount = regularSessions.filter((s) => s.status === 'completed').length;
+  const totalSwimmers = regularSessions.reduce((acc, s) => acc + s.peopleCount, 0);
 
   // Filter sessions
-  const filteredSessions = sessions.filter((session) => {
+  const filteredSessions = regularSessions.filter((session) => {
     // Tab filter
     if (activeTab === 'active' && session.status !== 'active' && session.status !== 'expiring') {
       return false;

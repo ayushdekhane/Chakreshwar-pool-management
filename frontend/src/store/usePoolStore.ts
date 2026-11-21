@@ -11,6 +11,7 @@ import {
   AlertNotification,
   SessionStatus,
   PaymentMethod,
+  MonthlyMembership,
 } from '../types';
 import {
   DbCustomer,
@@ -36,6 +37,7 @@ import { equipmentService } from '../services/equipmentService';
 import { packageService } from '../services/packageService';
 import { authService } from '../services/authService';
 import { settingsService } from '../services/settingsService';
+import { monthlyMembershipService } from '../services/monthlyMembershipService';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { offlineStorage } from '../lib/offline/offline-storage';
 import { syncQueue } from '../lib/offline/sync-queue';
@@ -51,6 +53,7 @@ interface PoolStore {
   rentals: RentalItem[];
   packages: Package[];
   customers: Customer[];
+  monthlyMemberships: MonthlyMembership[];
   equipment: Equipment[];
   settings: Settings;
   alerts: AlertNotification[];
@@ -73,6 +76,7 @@ interface PoolStore {
     | 'return_equipment'
     | 'extend_session'
     | 'session_details'
+    | 'monthly_entry'
     | 'package_modal'
     | 'receipt_modal'
     | 'staff_login'
@@ -82,6 +86,7 @@ interface PoolStore {
   selectedRentalId: string | null;
   selectedPaymentId: string | null;
   selectedPackage: Package | null;
+  selectedPackageKind: 'regular' | 'monthly' | null;
 
   // Modal actions
   openModal: (
@@ -91,6 +96,7 @@ interface PoolStore {
       rentalId?: string;
       paymentId?: string;
       pkg?: Package;
+      packageKind?: 'regular' | 'monthly';
     }
   ) => void;
   closeModal: () => void;
@@ -201,6 +207,8 @@ interface PoolStore {
   updatePackage: (id: string, pkg: Partial<Package>) => Promise<void>;
   togglePackageActive: (id: string) => Promise<void>;
   archivePackage: (id: string) => Promise<void>;
+  createMonthlyMembership: (data: Omit<MonthlyMembership, 'id' | 'createdAt'>) => Promise<MonthlyMembership>;
+  deleteMonthlyMembership: (id: string) => Promise<void>;
   addEquipment: (equipment: Omit<Equipment, 'id'>) => Promise<void>;
   deleteEquipment: (id: string) => Promise<void>;
   updateEquipment: (
@@ -474,6 +482,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   rentals: [],
   packages: [],
   customers: [],
+  monthlyMemberships: [],
   equipment: [],
   settings: initialSettings,
   alerts: [],
@@ -490,6 +499,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
   selectedRentalId: null,
   selectedPaymentId: null,
   selectedPackage: null,
+  selectedPackageKind: null,
 
   openModal: (modal, payload) =>
     set({
@@ -498,6 +508,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       selectedRentalId: payload?.rentalId || null,
       selectedPaymentId: payload?.paymentId || null,
       selectedPackage: payload?.pkg || null,
+      selectedPackageKind: payload?.packageKind || null,
     }),
 
   closeModal: () =>
@@ -507,6 +518,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       selectedRentalId: null,
       selectedPaymentId: null,
       selectedPackage: null,
+      selectedPackageKind: null,
     }),
 
   /**
@@ -571,13 +583,14 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
     set({ isLoadingData: true });
     try {
-      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment, packages, remoteSettings] = await Promise.all([
+      const [dbCustomers, dbSessions, dbPayments, dbRentals, equipment, packages, monthlyMemberships, remoteSettings] = await Promise.all([
         customerService.getCustomers(),
         sessionService.getSessions(),
         paymentService.getPayments(),
         rentalService.getAllRentals(),
         equipmentService.getAll(),
         packageService.getAll(),
+        monthlyMembershipService.getAll(),
         settingsService.get(),
       ]);
 
@@ -631,6 +644,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
         rentals: transformed.rentals,
         equipment: resolvedEquipment,
         packages,
+        monthlyMemberships,
         ...(remoteSettings && !hasPendingSettingsUpdate ? { settings: remoteSettings } : {}),
         isSupabaseLive: true,
       });
@@ -2280,6 +2294,21 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     await packageService.remove(id);
     set((state) => ({
       packages: state.packages.filter((p) => p.id !== id),
+    }));
+  },
+
+  createMonthlyMembership: async (data) => {
+    const membership = await monthlyMembershipService.create(data);
+    set((state) => ({
+      monthlyMemberships: [membership, ...state.monthlyMemberships],
+    }));
+    return membership;
+  },
+
+  deleteMonthlyMembership: async (id) => {
+    await monthlyMembershipService.remove(id);
+    set((state) => ({
+      monthlyMemberships: state.monthlyMemberships.filter((item) => item.id !== id),
     }));
   },
 

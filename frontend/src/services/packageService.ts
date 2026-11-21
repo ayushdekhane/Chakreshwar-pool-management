@@ -8,6 +8,8 @@ interface DbPackage {
   price: number;
   description: string;
   is_active: boolean;
+  package_kind?: 'regular' | 'monthly';
+  duration_months?: number;
 }
 
 const fromDatabase = (row: DbPackage): Package => ({
@@ -17,6 +19,8 @@ const fromDatabase = (row: DbPackage): Package => ({
   price: Number(row.price),
   description: row.description,
   isActive: row.is_active,
+  packageKind: row.package_kind || 'regular',
+  durationMonths: row.duration_months || (row.package_kind === 'monthly' ? 1 : undefined),
 });
 
 const toDatabase = (pkg: Omit<Package, 'id' | 'swimmersCount'>) => ({
@@ -25,6 +29,8 @@ const toDatabase = (pkg: Omit<Package, 'id' | 'swimmersCount'>) => ({
   price: pkg.price,
   description: pkg.description.trim(),
   is_active: pkg.isActive,
+  package_kind: pkg.packageKind || 'regular',
+  duration_months: pkg.durationMonths || (pkg.packageKind === 'monthly' ? 1 : undefined),
 });
 
 function ensureConfigured() {
@@ -80,6 +86,11 @@ export const packageService = {
       databaseUpdates.description = updates.description.trim();
     }
     if (updates.isActive !== undefined) databaseUpdates.is_active = updates.isActive;
+    if (updates.packageKind !== undefined) databaseUpdates.package_kind = updates.packageKind;
+    if (updates.durationMonths !== undefined) {
+      databaseUpdates.duration_months = updates.durationMonths;
+      databaseUpdates.duration_minutes = updates.durationMonths * 30 * 24 * 60;
+    }
     databaseUpdates.updated_at = new Date().toISOString();
 
     const { error } = await supabase.from('packages').update(databaseUpdates).eq('id', id);

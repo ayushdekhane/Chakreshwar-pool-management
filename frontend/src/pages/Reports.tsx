@@ -51,6 +51,7 @@ export const Reports: React.FC = () => {
   const { isOnline } = usePwa();
   const sessions = usePoolStore((state) => state.sessions);
   const payments = usePoolStore((state) => state.payments);
+  const monthlyMemberships = usePoolStore((state) => state.monthlyMemberships);
 
   // Active Tab: 'daily' | 'monthly'
   const [reportTab, setReportTab] = useState<'daily' | 'monthly'>('daily');
@@ -104,6 +105,28 @@ export const Reports: React.FC = () => {
     .filter((p) => p.method !== 'cash')
     .reduce((acc, p) => acc + p.amount, 0);
 
+  const dailyMonthlyMemberships = monthlyMemberships.filter(
+    (membership) => getDateKey(membership.startDate) === selectedDate
+  );
+  const dailyMonthlyPayments = dailyMonthlyMemberships.reduce(
+    (total, membership) => total + membership.paidAmount,
+    0
+  );
+  const dailyMonthlyCashPayments = dailyMonthlyMemberships
+    .filter((membership) => membership.paymentMethod === 'cash')
+    .reduce((total, membership) => total + membership.paidAmount, 0);
+  const dailyMonthlyOnlinePayments = dailyMonthlyMemberships
+    .filter((membership) => membership.paymentMethod !== 'cash')
+    .reduce((total, membership) => total + membership.paidAmount, 0);
+
+  const dailyMonthlyPackageAmount = dailyMonthlyMemberships.reduce(
+    (total, membership) => total + membership.price,
+    0
+  );
+  const dailyTotalBillWithMonthly = dailyTotalBill + dailyMonthlyPackageAmount;
+  const dailyCashCollectionsWithMonthly = dailyCashCollections + dailyMonthlyCashPayments;
+  const dailyOnlineCollectionsWithMonthly = dailyOnlineCollections + dailyMonthlyOnlinePayments;
+
   // ==========================================
   // MONTHLY REPORT DATA COMPUTATION
   // ==========================================
@@ -118,6 +141,9 @@ export const Reports: React.FC = () => {
 
       const daySessions = sessions.filter((s) => getDateKey(s.entryTime) === dayStr);
       const dayPayments = payments.filter((p) => getDateKey(p.timestamp) === dayStr);
+      const dayMonthlyMemberships = monthlyMemberships.filter(
+        (membership) => getDateKey(membership.startDate) === dayStr
+      );
 
       const swimmers = daySessions.reduce((acc, s) => acc + s.peopleCount, 0);
       const indEntries = daySessions.filter((s) => s.type === 'individual').length;
@@ -127,6 +153,16 @@ export const Reports: React.FC = () => {
       const extChg = daySessions.reduce((acc, s) => acc + s.extensionCharges, 0);
       const rentChg = daySessions.reduce((acc, s) => acc + s.rentalCharges, 0);
       const totalChg = daySessions.reduce((acc, s) => acc + s.totalCharges, 0);
+      const monthlyPackageChg = dayMonthlyMemberships.reduce(
+        (total, membership) => total + membership.price,
+        0
+      );
+      const monthlyCash = dayMonthlyMemberships
+        .filter((membership) => membership.paymentMethod === 'cash')
+        .reduce((total, membership) => total + membership.paidAmount, 0);
+      const monthlyOnline = dayMonthlyMemberships
+        .filter((membership) => membership.paymentMethod !== 'cash')
+        .reduce((total, membership) => total + membership.paidAmount, 0);
 
       const cash = dayPayments
         .filter((p) => p.method === 'cash')
@@ -140,16 +176,16 @@ export const Reports: React.FC = () => {
         swimmers,
         individualEntries: indEntries,
         groupEntries: grpEntries,
-        swimmingCharges: swimChg,
+        swimmingCharges: swimChg + monthlyPackageChg,
         extensionCharges: extChg,
         rentalCharges: rentChg,
-        totalCharges: totalChg,
-        cash,
-        online,
+        totalCharges: totalChg + monthlyPackageChg,
+        cash: cash + monthlyCash,
+        online: online + monthlyOnline,
       });
     }
     return list;
-  }, [sessions, payments, selectedYear, selectedMonth, daysInMonth]);
+  }, [sessions, payments, monthlyMemberships, selectedYear, selectedMonth, daysInMonth]);
 
   // Monthly summary cards totals
   const monthlySwimRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.swimmingCharges, 0);
@@ -159,6 +195,21 @@ export const Reports: React.FC = () => {
   const monthlyTotalSwimmers = monthlyDailyBreakdown.reduce((acc, d) => acc + d.swimmers, 0);
   const monthlyIndSessions = monthlyDailyBreakdown.reduce((acc, d) => acc + d.individualEntries, 0);
   const monthlyGroupSessions = monthlyDailyBreakdown.reduce((acc, d) => acc + d.groupEntries, 0);
+
+  const monthlyMembershipRegistrations = monthlyMemberships.filter((membership) => {
+    const parts = getDateKey(membership.startDate).split('-').map(Number);
+    return parts[0] === selectedYear && parts[1] === selectedMonth + 1;
+  });
+  const monthlyMembershipPayments = monthlyMembershipRegistrations.reduce(
+    (total, membership) => total + membership.paidAmount,
+    0
+  );
+  const monthlyMembershipCashPayments = monthlyMembershipRegistrations
+    .filter((membership) => membership.paymentMethod === 'cash')
+    .reduce((total, membership) => total + membership.paidAmount, 0);
+  const monthlyMembershipOnlinePayments = monthlyMembershipRegistrations
+    .filter((membership) => membership.paymentMethod !== 'cash')
+    .reduce((total, membership) => total + membership.paidAmount, 0);
 
   // Unique customers this month
   const monthlyUniqueCustomers = useMemo(() => {
@@ -200,27 +251,58 @@ export const Reports: React.FC = () => {
 
   // Export Daily
   const handleExportDailyCsv = () => {
-    const rows = dailySessions.map((s) => ({
-      'Session ID': s.id,
+    const sessionRows = dailySessions.map((s) => {
+      const sessionPayment =
+        s.payments.find((payment) => payment.status === 'success') ||
+        dailyPayments.find((payment) => payment.sessionId === s.id);
+      const rawPaymentMethod = sessionPayment?.method;
+      const paymentMethod =
+        rawPaymentMethod && rawPaymentMethod !== 'cash'
+          ? 'Online'
+          : rawPaymentMethod
+            ? 'Cash'
+            : s.paidAmount > 0
+              ? 'Cash'
+              : 'Unpaid';
+
+      return ({
+      'Record Type': 'Pool Session',
+      'Record ID': s.id,
       Customer: s.customerName,
       Phone: s.customerPhone,
-      Type: s.type,
-      Swimmers: s.peopleCount,
-      'Entry Time': formatTime(s.entryTime),
-      'Allotted Exit Time': formatTime(s.scheduledExitTime),
-      'Actual Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : '',
-      Lockers: s.lockerNumbers?.join(', ') || '',
+      Package: s.packageName || s.type,
       Duration: `${s.durationMinutes} mins`,
+      'Entry Time': formatTime(s.entryTime),
+      'Expiry / Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : formatTime(s.scheduledExitTime),
       'Swimming Charges': s.swimmingCharges,
-      'Extension Charges': s.extensionCharges,
-      'Equipment Charges': s.rentalCharges,
-      'Total Bill': s.totalCharges,
       'Paid Amount': s.paidAmount,
+      'Payment Method': paymentMethod,
       'Payment Status': s.paymentStatus,
-      'Session Status': s.status,
+      Status: s.status,
+      });
+    });
+    const membershipRows = dailyMonthlyMemberships.map((membership) => ({
+      'Record Type': 'Monthly Package',
+      'Record ID': membership.id,
+      Customer: membership.customerName,
+      Phone: membership.customerPhone,
+      Package: membership.packageName,
+      Duration: `${membership.durationMonths} month(s)`,
+      'Entry Time': formatTime(membership.startDate),
+      'Expiry / Exit Time': formatTime(membership.expiryDate),
+      'Swimming Charges': membership.price,
+      'Paid Amount': membership.paidAmount,
+      'Payment Method': membership.paymentMethod,
+      'Payment Status': membership.paymentStatus,
+      Status: 'Active',
     }));
-    exportToCsv(`Daily_Report_${selectedDate}`, rows);
-    toast.success('Daily report exported to CSV!');
+    const rows = [...sessionRows, ...membershipRows];
+
+    if (!exportToCsv(`Daily_Report_${selectedDate}`, rows)) {
+      toast.warning('No daily records are available to export.');
+      return;
+    }
+    toast.success('Daily report downloaded as CSV!');
   };
 
   const handleExportMonthlyExcel = () => {
@@ -235,9 +317,21 @@ export const Reports: React.FC = () => {
       'Cash Received': d.cash,
       'Online Received': d.online,
     }));
+    const membershipRows = monthlyMembershipRegistrations.map((membership) => ({
+      Date: getDateKey(membership.startDate),
+      Customer: membership.customerName,
+      Phone: membership.customerPhone,
+      Package: membership.packageName,
+      Duration: `${membership.durationMonths} month(s)`,
+      'Package Amount': membership.price,
+      'Paid Amount': membership.paidAmount,
+      'Payment Method': membership.paymentMethod,
+      'Payment Status': membership.paymentStatus,
+    }));
 
     exportToExcel(`Monthly_Report_${months[selectedMonth]}_${selectedYear}`, [
       { sheetName: 'Daily Breakdown', data: rows },
+      { sheetName: 'Monthly Packages', data: membershipRows },
     ]);
     toast.success('Monthly report exported to Excel!');
   };
@@ -430,7 +524,7 @@ export const Reports: React.FC = () => {
             />
             <StatCard
               title="Total Daily Bill"
-              value={formatCurrency(dailyTotalBill)}
+              value={formatCurrency(dailyTotalBillWithMonthly)}
               subtitle="All billed services"
               icon={CreditCard}
               iconBgColor="bg-blue-50"
@@ -439,7 +533,7 @@ export const Reports: React.FC = () => {
             />
             <StatCard
               title="Cash Collections"
-              value={formatCurrency(dailyCashCollections)}
+              value={formatCurrency(dailyCashCollectionsWithMonthly)}
               subtitle="Physical counter"
               icon={IndianRupee}
               iconBgColor="bg-emerald-50"
@@ -447,8 +541,33 @@ export const Reports: React.FC = () => {
             />
             <StatCard
               title="Online Collections"
-              value={formatCurrency(dailyOnlineCollections)}
+              value={formatCurrency(dailyOnlineCollectionsWithMonthly)}
               subtitle="UPI, Card & Netbanking"
+              icon={Smartphone}
+              iconBgColor="bg-blue-50"
+              iconColor="text-blue-600"
+            />
+            <StatCard
+              title="Monthly Package Payments"
+              value={formatCurrency(dailyMonthlyPayments)}
+              subtitle={`${dailyMonthlyMemberships.length} monthly registrations`}
+              icon={Calendar}
+              iconBgColor="bg-purple-50"
+              iconColor="text-purple-700"
+              accentBorderColor="border-l-purple-500"
+            />
+            <StatCard
+              title="Monthly Package Cash"
+              value={formatCurrency(dailyMonthlyCashPayments)}
+              subtitle="Cash monthly memberships"
+              icon={IndianRupee}
+              iconBgColor="bg-emerald-50"
+              iconColor="text-emerald-700"
+            />
+            <StatCard
+              title="Monthly Package Online"
+              value={formatCurrency(dailyMonthlyOnlinePayments)}
+              subtitle="Online monthly memberships"
               icon={Smartphone}
               iconBgColor="bg-blue-50"
               iconColor="text-blue-600"
@@ -567,6 +686,63 @@ export const Reports: React.FC = () => {
             </div>
           </div>
 
+          {/* Daily Monthly Package Ledger */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-subtle overflow-hidden">
+            <div className="p-4 bg-purple-50/60 border-b border-purple-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-sm text-slate-800">Monthly Package Payments · {selectedDate}</h3>
+                <p className="text-xs text-slate-500">
+                  Customers registered for monthly packages and the amount paid
+                </p>
+              </div>
+              <span className="text-xs font-bold text-purple-700">
+                {formatCurrency(dailyMonthlyPayments)} Collected
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/50 border-b border-[#E2E8F0] text-slate-600 font-semibold uppercase text-[10px] tracking-wider">
+                    <th className="py-3 px-3">Customer</th>
+                    <th className="py-3 px-3">Phone</th>
+                    <th className="py-3 px-3">Package</th>
+                    <th className="py-3 px-3">Duration</th>
+                    <th className="py-3 px-3">Payment Mode</th>
+                    <th className="py-3 px-3">Paid Amount</th>
+                    <th className="py-3 px-3">Package Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {dailyMonthlyMemberships.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-10 text-center text-slate-400">
+                        <p className="font-semibold text-slate-600">No monthly package payments on {selectedDate}</p>
+                      </td>
+                    </tr>
+                  ) : (
+                    dailyMonthlyMemberships.map((membership) => (
+                      <tr key={membership.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-3 font-bold text-slate-900">{membership.customerName}</td>
+                        <td className="py-3 px-3 text-slate-600">{membership.customerPhone}</td>
+                        <td className="py-3 px-3">{membership.packageName}</td>
+                        <td className="py-3 px-3">{membership.durationMonths} month(s)</td>
+                        <td className="py-3 px-3 font-bold text-slate-700">
+                          {membership.paymentMethod === 'cash' ? 'Cash' : 'Online'}
+                        </td>
+                        <td className="py-3 px-3 font-extrabold text-emerald-700">
+                          {formatCurrency(membership.paidAmount)}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-900">
+                          {formatCurrency(membership.price)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Daily Payment Transactions Ledger */}
           <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-subtle overflow-hidden">
             <div className="p-4 bg-slate-50 border-b border-[#E2E8F0] flex items-center justify-between">
@@ -656,7 +832,32 @@ export const Reports: React.FC = () => {
       {reportTab === 'monthly' && (
         <div className="space-y-6">
           {/* Monthly Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <StatCard
+              title="Monthly Package Payments"
+              value={formatCurrency(monthlyMembershipPayments)}
+              subtitle={`${monthlyMembershipRegistrations.length} memberships registered`}
+              icon={Calendar}
+              iconBgColor="bg-purple-50"
+              iconColor="text-purple-700"
+              accentBorderColor="border-l-purple-500"
+            />
+            <StatCard
+              title="Monthly Package Cash"
+              value={formatCurrency(monthlyMembershipCashPayments)}
+              subtitle="Cash memberships"
+              icon={IndianRupee}
+              iconBgColor="bg-emerald-50"
+              iconColor="text-emerald-700"
+            />
+            <StatCard
+              title="Monthly Package Online"
+              value={formatCurrency(monthlyMembershipOnlinePayments)}
+              subtitle="Online memberships"
+              icon={Smartphone}
+              iconBgColor="bg-blue-50"
+              iconColor="text-blue-600"
+            />
             <StatCard
               title="Monthly Collections"
               value={formatCurrency(monthlyCollections)}

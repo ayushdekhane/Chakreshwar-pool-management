@@ -174,8 +174,8 @@ export function playAlertSound(type: 'warning' | 'expired' | 'success' | 'click'
 /**
  * Clean CSV export utility
  */
-export function exportToCsv(filename: string, rows: Record<string, unknown>[]): void {
-  if (!rows || rows.length === 0) return;
+export function exportToCsv(filename: string, rows: Record<string, unknown>[]): boolean {
+  if (!rows || rows.length === 0) return false;
   const headers = Object.keys(rows[0]);
   const csvContent = [
     headers.join(','),
@@ -190,15 +190,22 @@ export function exportToCsv(filename: string, rows: Record<string, unknown>[]): 
     ),
   ].join('\r\n');
 
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob([`\ufeff${csvContent}`], {
+    type: 'text/csv;charset=utf-8;',
+  });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
   link.setAttribute('download', `${filename.replace(/\.csv$/, '')}.csv`);
+  link.style.display = 'none';
   document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  try {
+    link.click();
+  } finally {
+    document.body.removeChild(link);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  return true;
 }
 
 /**

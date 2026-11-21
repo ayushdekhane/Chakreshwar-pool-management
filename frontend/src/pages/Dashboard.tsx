@@ -23,17 +23,27 @@ import { formatCurrency, formatTime, formatDateTime } from '../utils';
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const sessions = usePoolStore((state) => state.sessions);
+  const packages = usePoolStore((state) => state.packages);
   const alerts = usePoolStore((state) => state.alerts);
   const openModal = usePoolStore((state) => state.openModal);
   const completeSession = usePoolStore((state) => state.completeSession);
   const dismissAlert = usePoolStore((state) => state.dismissAlert);
 
   // Filter active, expiring, expired
-  const activeSessions = sessions.filter(
+  const monthlyPackageIds = new Set(
+    packages
+      .filter((pkg) => pkg.packageKind === 'monthly')
+      .map((pkg) => pkg.id)
+  );
+  const regularSessions = sessions.filter(
+    (session) => !monthlyPackageIds.has(session.packageId)
+  );
+
+  const activeSessions = regularSessions.filter(
     (s) => s.status === 'active' || s.status === 'expiring'
   );
-  const expiredSessions = sessions.filter((s) => s.status === 'expired');
-  const expiringSessions = sessions.filter((s) => s.status === 'expiring');
+  const expiredSessions = regularSessions.filter((s) => s.status === 'expired');
+  const expiringSessions = regularSessions.filter((s) => s.status === 'expiring');
 
   // Currently Swimming & Total People
   const currentlySwimmingCount = activeSessions.length;
@@ -43,7 +53,11 @@ export const Dashboard: React.FC = () => {
   const currentDeckSessions = [...expiringSessions, ...expiredSessions, ...activeSessions.filter(s => s.status === 'active')];
 
   // Active alerts
-  const activeAlerts = alerts.filter((a) => !a.isDismissed);
+  const activeAlerts = alerts.filter(
+    (a) =>
+      !a.isDismissed &&
+      regularSessions.some((session) => session.id === a.sessionId)
+  );
 
   return (
     <div className="space-y-6">

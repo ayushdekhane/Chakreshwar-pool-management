@@ -15,6 +15,7 @@ import { UpdatePromptModal } from '../pwa/UpdatePromptModal';
 
 // Global Modals
 import { IndividualEntryModal } from '../sessions/IndividualEntryModal';
+import { MonthlyEntryModal } from '../sessions/MonthlyEntryModal';
 import { GroupEntryModal } from '../groups/GroupEntryModal';
 import { ExtendSessionModal } from '../sessions/ExtendSessionModal';
 import { SessionDetailsModal } from '../sessions/SessionDetailsModal';
@@ -127,6 +128,11 @@ export const Layout: React.FC = () => {
         { event: '*', schema: 'public', table: 'packages' },
         queueRefresh
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'monthly_memberships' },
+        queueRefresh
+      )
       .subscribe((status, error) => {
         if (status === 'CHANNEL_ERROR') {
           console.error('[Realtime] Supabase live data channel failed:', error);
@@ -195,6 +201,7 @@ export const Layout: React.FC = () => {
 
       {/* Global Interactive Modals (accessible from any page/button) */}
       <IndividualEntryModal />
+      <MonthlyEntryModal />
       <GroupEntryModal />
       <ExtendSessionModal />
       <SessionDetailsModal />

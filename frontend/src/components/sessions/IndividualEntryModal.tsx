@@ -35,11 +35,14 @@ const getAccessoryKey = (equipmentId: string, type: 'rental' | 'sale') =>
 export const IndividualEntryModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
   const closeModal = usePoolStore((state) => state.closeModal);
-  const packages = usePoolStore((state) => state.packages.filter((p) => p.isActive));
+  const packages = usePoolStore((state) =>
+    state.packages.filter((p) => p.isActive && p.packageKind !== 'monthly')
+  );
   const equipment = usePoolStore((state) => state.equipment);
   const sessions = usePoolStore((state) => state.sessions);
   const settings = usePoolStore((state) => state.settings);
   const createIndividualSession = usePoolStore((state) => state.createIndividualSession);
+  const selectedPackage = usePoolStore((state) => state.selectedPackage);
 
   const [isCustomPkg, setIsCustomPkg] = useState(false);
   const [equipmentType, setEquipmentType] = useState<'rental' | 'sale'>('rental');
@@ -81,6 +84,18 @@ export const IndividualEntryModal: React.FC = () => {
 
   // Selected package
   const selectedPkg = packages.find((p) => p.id === selectedPkgId);
+
+  useEffect(() => {
+    if (
+      activeModal === 'individual_entry' &&
+      selectedPackage &&
+      selectedPackage.packageKind !== 'monthly'
+    ) {
+      setIsCustomPkg(false);
+      setValue('packageId', selectedPackage.id);
+      setValue('paidAmount', selectedPackage.price);
+    }
+  }, [activeModal, selectedPackage, setValue]);
 
   // Compute bill
   const swimCharge = isCustomPkg ? (watchCustomAmount || 0) : (selectedPkg?.price || 0);

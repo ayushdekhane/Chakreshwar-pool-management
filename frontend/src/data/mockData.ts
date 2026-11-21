@@ -23,6 +23,26 @@ export const initialSettings: Settings = {
 
 export const initialPackages: Package[] = [
   {
+    id: 'pkg-monthly-coaching',
+    name: 'Coaching',
+    durationMinutes: 43200,
+    price: 3500,
+    description: '30-day monthly swimming coaching package.',
+    isActive: true,
+    packageKind: 'monthly',
+    durationMonths: 1,
+  },
+  {
+    id: 'pkg-monthly-regular',
+    name: 'Regular Swimming',
+    durationMinutes: 43200,
+    price: 2000,
+    description: '30-day regular monthly swimming package.',
+    isActive: true,
+    packageKind: 'monthly',
+    durationMonths: 1,
+  },
+  {
     id: 'pkg-30',
     name: 'Quick Splash (30 Mins)',
     durationMinutes: 30,

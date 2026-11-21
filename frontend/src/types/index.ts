@@ -22,8 +22,28 @@ export interface Package {
   price: number;
   description: string;
   isActive: boolean;
+  packageKind?: 'regular' | 'monthly';
+  durationMonths?: number;
   isCustom?: boolean;
   swimmersCount?: number;
+}
+
+export interface MonthlyMembership {
+  id: string;
+  customerName: string;
+  customerPhone: string;
+  customerAge?: number;
+  notes?: string;
+  packageId: string;
+  packageName: string;
+  durationMonths: number;
+  price: number;
+  paidAmount: number;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod;
+  startDate: string;
+  expiryDate: string;
+  createdAt: string;
 }
 
 export interface ExtensionRecord {

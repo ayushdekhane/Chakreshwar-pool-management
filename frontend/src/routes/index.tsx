@@ -7,6 +7,7 @@ import { Groups } from '../pages/Groups';
 import { Payments } from '../pages/Payments';
 import { Reports } from '../pages/Reports';
 import { Packages } from '../pages/Packages';
+import { Monthly } from '../pages/Monthly';
 import { Settings } from '../pages/Settings';
 
 export const AppRoutes: React.FC = () => {
@@ -19,10 +20,10 @@ export const AppRoutes: React.FC = () => {
         <Route path="payments" element={<Payments />} />
         <Route path="reports" element={<Reports />} />
         <Route path="packages" element={<Packages />} />
+        <Route path="monthly" element={<Monthly />} />
         <Route path="settings" element={<Settings />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
   );
 };
-

@@ -7,6 +7,7 @@ import { usePoolStore } from '../../store/usePoolStore';
 export const PackageModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
   const selectedPackage = usePoolStore((state) => state.selectedPackage);
+  const selectedPackageKind = usePoolStore((state) => state.selectedPackageKind);
   const closeModal = usePoolStore((state) => state.closeModal);
   const addPackage = usePoolStore((state) => state.addPackage);
   const updatePackage = usePoolStore((state) => state.updatePackage);
@@ -16,6 +17,8 @@ export const PackageModal: React.FC = () => {
   const [price, setPrice] = useState(100);
   const [description, setDescription] = useState('');
   const [isActive, setIsActive] = useState(true);
+  const [packageKind, setPackageKind] = useState<'regular' | 'monthly'>('regular');
+  const [durationMonths, setDurationMonths] = useState(1);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -25,14 +28,18 @@ export const PackageModal: React.FC = () => {
       setPrice(selectedPackage.price);
       setDescription(selectedPackage.description);
       setIsActive(selectedPackage.isActive);
+      setPackageKind(selectedPackage.packageKind || 'regular');
+      setDurationMonths(selectedPackage.durationMonths || 1);
     } else {
       setName('');
-      setDurationMinutes(60);
+      setDurationMinutes(selectedPackageKind === 'monthly' ? 43200 : 60);
       setPrice(100);
       setDescription('');
       setIsActive(true);
+      setPackageKind(selectedPackageKind || 'regular');
+      setDurationMonths(1);
     }
-  }, [selectedPackage]);
+  }, [selectedPackage, selectedPackageKind]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,7 +47,11 @@ export const PackageModal: React.FC = () => {
       toast.error('Package name is required.');
       return;
     }
-    if (durationMinutes <= 0 || price < 0) {
+    if (
+      (packageKind === 'monthly' && durationMonths <= 0) ||
+      (packageKind !== 'monthly' && durationMinutes <= 0) ||
+      price < 0
+    ) {
       toast.error('Duration and price must be valid positive values.');
       return;
     }
@@ -50,19 +61,27 @@ export const PackageModal: React.FC = () => {
       if (selectedPackage) {
         await updatePackage(selectedPackage.id, {
           name,
-          durationMinutes,
           price,
           description,
           isActive,
+          packageKind,
+          durationMonths: packageKind === 'monthly' ? durationMonths : undefined,
+          durationMinutes: packageKind === 'monthly'
+            ? durationMonths * 30 * 24 * 60
+            : durationMinutes,
         });
         toast.success(`Package "${name}" updated!`);
       } else {
         await addPackage({
           name,
-          durationMinutes,
           price,
           description,
           isActive,
+          packageKind,
+          durationMonths: packageKind === 'monthly' ? durationMonths : undefined,
+          durationMinutes: packageKind === 'monthly'
+            ? durationMonths * 30 * 24 * 60
+            : durationMinutes,
         });
         toast.success(`New package "${name}" created!`);
       }
@@ -100,20 +119,36 @@ export const PackageModal: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Duration (Minutes) *
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="360"
-              value={durationMinutes}
-              onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 0)}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
-              required
-            />
-          </div>
+          {packageKind === 'monthly' ? (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Duration (Months) *
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={durationMonths}
+                onChange={(e) => setDurationMonths(parseInt(e.target.value, 10) || 0)}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
+                required
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Duration (Minutes) *
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="360"
+                value={durationMinutes}
+                onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 0)}
+                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
+                required
+              />
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -128,6 +163,20 @@ export const PackageModal: React.FC = () => {
               required
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1">
+            Package Category *
+          </label>
+          <select
+            value={packageKind}
+            onChange={(e) => setPackageKind(e.target.value as 'regular' | 'monthly')}
+            className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
+          >
+            <option value="regular">Regular Package</option>
+            <option value="monthly">Monthly Package</option>
+          </select>
         </div>
 
         <div>

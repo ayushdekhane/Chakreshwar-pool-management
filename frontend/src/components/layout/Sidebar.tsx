@@ -18,6 +18,7 @@ import {
   Database,
   LogIn,
   RefreshCw,
+  CalendarDays,
 } from 'lucide-react';
 import { usePoolStore } from '../../store/usePoolStore';
 import { isSupabaseConfigured } from '../../lib/supabase';
@@ -30,6 +31,7 @@ interface SidebarProps {
 
 export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const sessions = usePoolStore((state) => state.sessions);
+  const packages = usePoolStore((state) => state.packages);
   const settings = usePoolStore((state) => state.settings);
   const alerts = usePoolStore((state) => state.alerts);
   const openModal = usePoolStore((state) => state.openModal);
@@ -42,8 +44,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
   const fetchAllData = usePoolStore((state) => state.fetchAllData);
 
   // Active counts
-  const activeSessionsCount = sessions.filter((s) => s.status === 'active' || s.status === 'expiring').length;
-  const expiredCount = sessions.filter((s) => s.status === 'expired').length;
+  const monthlyPackageIds = new Set(
+    packages
+      .filter((pkg) => pkg.packageKind === 'monthly')
+      .map((pkg) => pkg.id)
+  );
+  const regularSessions = sessions.filter(
+    (session) => !monthlyPackageIds.has(session.packageId)
+  );
+  const activeSessionsCount = regularSessions.filter((s) => s.status === 'active' || s.status === 'expiring').length;
+  const expiredCount = regularSessions.filter((s) => s.status === 'expired').length;
   const activeGroupsCount = sessions.filter((s) => s.type === 'group' && s.status !== 'completed' && s.status !== 'cancelled').length;
   const pendingAlertsCount = alerts.filter((a) => !a.isDismissed).length;
 
@@ -84,6 +94,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       name: 'Packages',
       path: '/packages',
       icon: Tag,
+      badge: null,
+    },
+    {
+      name: 'Monthly',
+      path: '/monthly',
+      icon: CalendarDays,
       badge: null,
     },
     {

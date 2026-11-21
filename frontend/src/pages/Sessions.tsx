@@ -109,7 +109,7 @@ export const Sessions: React.FC = () => {
   });
 
   // Filter rentals
-  const filteredRentals = rentals.filter((r) => {
+  const filteredRentals = rentals.filter((r) => r.equipmentType !== 'sale').filter((r) => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (

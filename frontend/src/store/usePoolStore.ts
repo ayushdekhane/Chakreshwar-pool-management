@@ -436,11 +436,16 @@ function transformDbData(
     const sessionRentals = rentals.filter((r) => r.sessionId === s.id);
 
     const paidSum = sessionPayments.reduce((sum, p) => sum + p.amount, 0);
-    const rentalCharges = sessionRentals.reduce((sum, r) => sum + r.totalRentalAmount, 0);
+    const rentalCharges = sessionRentals
+      .filter((r) => r.equipmentType !== 'sale')
+      .reduce((sum, r) => sum + r.totalRentalAmount, 0);
+    const salesCharges = sessionRentals
+      .filter((r) => r.equipmentType === 'sale')
+      .reduce((sum, r) => sum + r.totalRentalAmount, 0);
     const swimmingCharges = Number(s.session_amount);
     const lockerCharges = Number(s.locker_charges ?? 0);
     const penaltyCharges = Number(s.penalty_charge ?? 0);
-    const totalCharges = swimmingCharges + lockerCharges + rentalCharges + penaltyCharges;
+    const totalCharges = swimmingCharges + lockerCharges + rentalCharges + salesCharges + penaltyCharges;
     const outstanding = Math.max(0, totalCharges - paidSum);
 
     const isGroup = Boolean(s.group_code);
@@ -466,6 +471,7 @@ function transformDbData(
       lockerCharges,
       extensionCharges: 0,
       rentalCharges,
+      salesCharges,
       penaltyCharges,
       penaltyApplied: s.penalty_applied ?? false,
       penaltyMinutes: s.penalty_minutes ?? 0,
@@ -1070,11 +1076,13 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       });
     }
 
-    const rentalCharge = sessionRentals.reduce(
-      (total, rental) => total + rental.totalRentalAmount,
-      0
-    );
-    const totalCharges = swimCharge + lockerCharge + rentalCharge;
+    const rentalCharge = sessionRentals
+      .filter((rental) => rental.equipmentType !== 'sale')
+      .reduce((total, rental) => total + rental.totalRentalAmount, 0);
+    const salesCharge = sessionRentals
+      .filter((rental) => rental.equipmentType === 'sale')
+      .reduce((total, rental) => total + rental.totalRentalAmount, 0);
+    const totalCharges = swimCharge + lockerCharge + rentalCharge + salesCharge;
     const paidAmount = data.paymentStatus === 'paid' ? totalCharges : (data.paidAmount || 0);
     const outstanding = Math.max(0, totalCharges - paidAmount);
 
@@ -1173,6 +1181,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       lockerCharges: lockerCharge,
       extensionCharges: 0,
       rentalCharges: rentalCharge,
+      salesCharges: salesCharge,
       totalCharges,
       paidAmount,
       outstandingBalance: outstanding,
@@ -1266,10 +1275,12 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       }
     });
 
-    const rentalCharge = selectedRentals.reduce(
-      (total, rental) => total + rental.pricePerItem * rental.quantity,
-      0
-    );
+    const rentalCharge = selectedRentals
+      .filter((rental) => rental.transactionType !== 'sale')
+      .reduce((total, rental) => total + rental.pricePerItem * rental.quantity, 0);
+    const salesCharge = selectedRentals
+      .filter((rental) => rental.transactionType === 'sale')
+      .reduce((total, rental) => total + rental.pricePerItem * rental.quantity, 0);
 
     const leaderCust = await get().addCustomer({
       name: data.leaderName,
@@ -1514,7 +1525,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       sessionPayments.push(newPayment);
     }
 
-    const totalCharges = data.totalPrice + lockerCharge + rentalCharge;
+    const totalCharges = data.totalPrice + lockerCharge + rentalCharge + salesCharge;
     const paidAmount = data.initialPayment;
     const outstanding = Math.max(0, totalCharges - paidAmount);
 
@@ -1538,6 +1549,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       lockerCharges: lockerCharge,
       extensionCharges: 0,
       rentalCharges: rentalCharge,
+      salesCharges: salesCharge,
       totalCharges,
       paidAmount,
       outstandingBalance: outstanding,
@@ -2208,12 +2220,18 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       if (data.sessionId) {
         updatedSessions = state.sessions.map((s) => {
           if (s.id === data.sessionId) {
-            const newRentalCharges = s.rentalCharges + totalAmount;
+            const newRentalCharges = transactionType === 'rental'
+              ? s.rentalCharges + totalAmount
+              : s.rentalCharges;
+            const newSalesCharges = transactionType === 'sale'
+              ? (s.salesCharges || 0) + totalAmount
+              : (s.salesCharges || 0);
             const newTotal = s.totalCharges + totalAmount;
             const newOutstanding = Math.max(0, newTotal - s.paidAmount);
             return {
               ...s,
               rentalCharges: newRentalCharges,
+              salesCharges: newSalesCharges,
               totalCharges: newTotal,
               outstandingBalance: newOutstanding,
               rentals: [...s.rentals, newRental],
@@ -2348,12 +2366,18 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
 
       const updatedSessions = state.sessions.map((s) => {
         if (s.id === rentalItem.sessionId) {
-          const newRentalCharges = Math.max(0, s.rentalCharges - rentalItem.totalRentalAmount);
+          const newRentalCharges = rentalItem.equipmentType === 'sale'
+            ? s.rentalCharges
+            : Math.max(0, s.rentalCharges - rentalItem.totalRentalAmount);
+          const newSalesCharges = rentalItem.equipmentType === 'sale'
+            ? Math.max(0, (s.salesCharges || 0) - rentalItem.totalRentalAmount)
+            : (s.salesCharges || 0);
           const newTotal = Math.max(0, s.totalCharges - rentalItem.totalRentalAmount);
           const newOutstanding = Math.max(0, newTotal - s.paidAmount);
           return {
             ...s,
             rentalCharges: newRentalCharges,
+            salesCharges: newSalesCharges,
             totalCharges: newTotal,
             outstandingBalance: newOutstanding,
             rentals: s.rentals.filter((r) => r.id !== rentalId),

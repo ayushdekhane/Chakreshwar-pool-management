@@ -96,6 +96,7 @@ export const Reports: React.FC = () => {
   const dailySwimCharges = dailySessions.reduce((acc, s) => acc + s.swimmingCharges, 0);
   const dailyExtCharges = dailySessions.reduce((acc, s) => acc + s.extensionCharges, 0);
   const dailyRentalCharges = dailySessions.reduce((acc, s) => acc + s.rentalCharges, 0);
+  const dailySalesCharges = dailySessions.reduce((acc, s) => acc + (s.salesCharges || 0), 0);
   const dailyTotalBill = dailySessions.reduce((acc, s) => acc + s.totalCharges, 0);
 
   const dailyCashCollections = dailyPayments
@@ -153,6 +154,7 @@ export const Reports: React.FC = () => {
       const swimChg = daySessions.reduce((acc, s) => acc + s.swimmingCharges, 0);
       const extChg = daySessions.reduce((acc, s) => acc + s.extensionCharges, 0);
       const rentChg = daySessions.reduce((acc, s) => acc + s.rentalCharges, 0);
+      const saleChg = daySessions.reduce((acc, s) => acc + (s.salesCharges || 0), 0);
       const lockerChg = daySessions.reduce((acc, s) => acc + (s.lockerCharges || 0), 0);
       const totalChg = daySessions.reduce((acc, s) => acc + s.totalCharges, 0);
       const monthlyPackageChg = dayMonthlyMemberships.reduce(
@@ -181,6 +183,7 @@ export const Reports: React.FC = () => {
         swimmingCharges: swimChg + monthlyPackageChg,
         extensionCharges: extChg,
         rentalCharges: rentChg,
+        salesCharges: saleChg,
         lockerCharges: lockerChg,
         totalCharges: totalChg + monthlyPackageChg,
         cash: cash + monthlyCash,
@@ -193,6 +196,7 @@ export const Reports: React.FC = () => {
   // Monthly summary cards totals
   const monthlySwimRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.swimmingCharges, 0);
   const monthlyRentalRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.rentalCharges, 0);
+  const monthlySalesRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.salesCharges, 0);
   const monthlyLockerRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.lockerCharges, 0);
   const monthlyExtRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.extensionCharges, 0);
   const monthlyCollections = monthlyDailyBreakdown.reduce((acc, d) => acc + d.cash + d.online, 0);
@@ -280,6 +284,8 @@ export const Reports: React.FC = () => {
       'Expiry / Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : formatTime(s.scheduledExitTime),
       'Swimming Charges': s.swimmingCharges,
       'Locker Charges': s.lockerCharges,
+      'Rental Charges': s.rentalCharges,
+      'Sales Charges': s.salesCharges || 0,
       'Paid Amount': s.paidAmount,
       'Payment Method': paymentMethod,
       'Payment Status': s.paymentStatus,
@@ -319,6 +325,7 @@ export const Reports: React.FC = () => {
       'Swimming Charges': d.swimmingCharges,
       'Locker Charges': d.lockerCharges,
       'Equipment Charges': d.rentalCharges,
+      'Sales Charges': d.salesCharges,
       'Total Charges': d.totalCharges,
       'Cash Received': d.cash,
       'Online Received': d.online,
@@ -537,6 +544,14 @@ export const Reports: React.FC = () => {
               iconColor="text-pink-700"
             />
             <StatCard
+              title="Sales"
+              value={formatCurrency(dailySalesCharges)}
+              subtitle="Equipment sold"
+              icon={Shirt}
+              iconBgColor="bg-violet-50"
+              iconColor="text-violet-700"
+            />
+            <StatCard
               title="Total Daily Bill"
               value={formatCurrency(dailyTotalBillWithMonthly)}
               subtitle="All billed services"
@@ -616,6 +631,7 @@ export const Reports: React.FC = () => {
                     <th className="py-3 px-3">Locker Fee</th>
                     <th className="py-3 px-3">Ext Fee</th>
                     <th className="py-3 px-3">Rental Fee</th>
+                    <th className="py-3 px-3">Sales</th>
                     <th className="py-3 px-3">Total Bill</th>
                     <th className="py-3 px-3">Paid</th>
                     <th className="py-3 px-3">Pay Status</th>
@@ -625,7 +641,7 @@ export const Reports: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {dailySessions.length === 0 ? (
                     <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-400">
+                      <td colSpan={13} className="py-12 text-center text-slate-400">
                         <Calendar className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                         <p className="font-semibold text-slate-600">No sessions recorded on {selectedDate}</p>
                         <p className="text-[11px] text-slate-400">
@@ -673,6 +689,9 @@ export const Reports: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 font-medium">
                           {formatCurrency(s.rentalCharges)}
+                        </td>
+                        <td className="py-3 px-3 font-medium text-violet-700">
+                          {formatCurrency(s.salesCharges || 0)}
                         </td>
                         <td className="py-3 px-3 font-bold text-slate-900">
                           {formatCurrency(s.totalCharges)}
@@ -902,6 +921,14 @@ export const Reports: React.FC = () => {
               iconColor="text-pink-700"
             />
             <StatCard
+              title="Sales Revenue"
+              value={formatCurrency(monthlySalesRevenue)}
+              subtitle="Equipment sold"
+              icon={Shirt}
+              iconBgColor="bg-violet-50"
+              iconColor="text-violet-700"
+            />
+            <StatCard
               title="Locker Revenue"
               value={formatCurrency(monthlyLockerRevenue)}
               subtitle="Locker collected"
@@ -1093,6 +1120,7 @@ export const Reports: React.FC = () => {
                     <th className="py-3 px-3">Swim Fee</th>
                     <th className="py-3 px-3">Locker Fee</th>
                     <th className="py-3 px-3">Rent Fee</th>
+                    <th className="py-3 px-3">Sales</th>
                     <th className="py-3 px-3">Total Charges</th>
                     <th className="py-3 px-3">Cash</th>
                     <th className="py-3 px-3">Online</th>
@@ -1131,6 +1159,9 @@ export const Reports: React.FC = () => {
                       </td>
                       <td className="py-3 px-3">
                         {row.rentalCharges > 0 ? formatCurrency(row.rentalCharges) : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-violet-700">
+                        {row.salesCharges > 0 ? formatCurrency(row.salesCharges) : '-'}
                       </td>
                       <td className="py-3 px-3 font-bold text-slate-900">
                         {row.totalCharges > 0 ? formatCurrency(row.totalCharges) : '-'}

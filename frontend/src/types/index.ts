@@ -114,6 +114,7 @@ export interface Session {
   penaltyMinutes?: number;
   penaltyIntervals?: number;
   rentalCharges: number;
+  salesCharges?: number;
   totalCharges: number;
   paidAmount: number;
   outstandingBalance: number;

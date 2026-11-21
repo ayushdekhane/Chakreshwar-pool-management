@@ -38,6 +38,8 @@ export const SessionDetailsModal: React.FC = () => {
   if (!session) return null;
 
   const isFinished = session.status === 'completed' || session.status === 'cancelled';
+  const rentalItems = session.rentals.filter((item) => item.equipmentType !== 'sale');
+  const saleItems = session.rentals.filter((item) => item.equipmentType === 'sale');
 
   const handleComplete = () => {
     openModal('checkout_session', { sessionId: session.id });
@@ -263,10 +265,10 @@ export const SessionDetailsModal: React.FC = () => {
           <div className="p-3.5 rounded-xl border border-slate-200 bg-white">
             <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Shirt className="w-4 h-4 text-[#087FA5]" />
-              Equipment Items ({session.rentals.length})
+              Rental Equipment ({rentalItems.length})
             </h4>
             <div className="space-y-2">
-              {session.rentals.map((rnt) => (
+              {rentalItems.map((rnt) => (
                 <div
                   key={rnt.id}
                   className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs"
@@ -313,6 +315,32 @@ export const SessionDetailsModal: React.FC = () => {
                       </button>
                     )}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {saleItems.length > 0 && (
+          <div className="p-3.5 rounded-xl border border-violet-200 bg-violet-50/30">
+            <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Shirt className="w-4 h-4 text-violet-600" />
+              Sold Equipment ({saleItems.length})
+            </h4>
+            <div className="space-y-2">
+              {saleItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between p-2.5 rounded-lg bg-white border border-violet-100 text-xs"
+                >
+                  <div>
+                    <span className="font-bold text-slate-800">{item.equipmentName}</span>
+                    {item.size && <span className="text-slate-500 ml-1">Size: {item.size}</span>}
+                    <span className="block text-[10px] text-slate-500">Quantity: {item.quantity}</span>
+                  </div>
+                  <span className="font-bold text-violet-700">
+                    {formatCurrency(item.totalRentalAmount)}
+                  </span>
                 </div>
               ))}
             </div>

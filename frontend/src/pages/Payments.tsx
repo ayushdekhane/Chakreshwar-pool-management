@@ -88,6 +88,7 @@ export const Payments: React.FC = () => {
       Reference: p.referenceNumber || '',
       Timestamp: p.timestamp,
       Status: p.status,
+      'Locker Amount': sessions.find((session) => session.id === p.sessionId)?.lockerCharges || 0,
     }));
     const safeBusinessName = businessName.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
     exportToCsv(`${safeBusinessName || 'Pool'}_Payments_Ledger`, exportData);
@@ -109,6 +110,7 @@ export const Payments: React.FC = () => {
       Reference: p.referenceNumber || '',
       Timestamp: p.timestamp,
       Status: p.status,
+      'Locker Amount': sessions.find((session) => session.id === p.sessionId)?.lockerCharges || 0,
     }));
     const safeBusinessName = businessName.replace(/[^a-z0-9]+/gi, '_').replace(/^_|_$/g, '');
     exportToExcel(`${safeBusinessName || 'Pool'}_Payments_Ledger`, [
@@ -247,6 +249,7 @@ export const Payments: React.FC = () => {
                 <th className="py-3 px-4">Payment Method</th>
                 <th className="py-3 px-4">Reference / UTR</th>
                 <th className="py-3 px-4">Amount</th>
+                <th className="py-3 px-4">Locker Amount</th>
                 <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -254,7 +257,7 @@ export const Payments: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {filteredPayments.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <CreditCard className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-600">No payment records found</p>
                     <p className="text-[11px] text-slate-400">Use "Record Payment" to log counter collections.</p>
@@ -312,6 +315,13 @@ export const Payments: React.FC = () => {
                             </span>
                           );
                         })()}
+                      </td>
+
+                      {/* Locker Amount */}
+                      <td className="py-3.5 px-4 font-bold text-[#087FA5]">
+                        {formatCurrency(
+                          sessions.find((session) => session.id === p.sessionId)?.lockerCharges || 0
+                        )}
                       </td>
 
                       {/* Status */}

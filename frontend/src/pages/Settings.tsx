@@ -41,6 +41,8 @@ const normalizeEquipmentSizes = (sizes: string[]) => {
 export const Settings: React.FC = () => {
   const settings = usePoolStore((state) => state.settings);
   const sessions = usePoolStore((state) => state.sessions);
+  const packages = usePoolStore((state) => state.packages);
+  const updatePackage = usePoolStore((state) => state.updatePackage);
   const equipment = usePoolStore((state) => state.equipment);
   const updateEquipment = usePoolStore((state) => state.updateEquipment);
   const addEquipment = usePoolStore((state) => state.addEquipment);
@@ -98,6 +100,15 @@ export const Settings: React.FC = () => {
     sizes: [] as string[],
     sizeNotApplicable: false,
   });
+  const [lockerPackagePrices, setLockerPackagePrices] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setLockerPackagePrices(
+      Object.fromEntries(
+        packages.map((pkg) => [pkg.id, String(pkg.lockerPrice ?? 0)])
+      )
+    );
+  }, [packages]);
 
   useEffect(() => {
     setRentalDrafts(
@@ -164,7 +175,7 @@ export const Settings: React.FC = () => {
     lockerCount: settings.lockerCount,
   });
 
-  const handleSave = (e?: React.FormEvent) => {
+  const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (activeTab === 'lockers') {
       const requestedLockerCount = Number(formData.lockerCount);
@@ -185,6 +196,23 @@ export const Settings: React.FC = () => {
         );
         return;
       }
+
+      try {
+        await Promise.all(
+          packages.map((pkg) => {
+            const lockerPrice = Number(lockerPackagePrices[pkg.id] ?? pkg.lockerPrice ?? 0);
+            if (!Number.isFinite(lockerPrice) || lockerPrice < 0) {
+              throw new Error(`Enter a valid locker price for ${pkg.name}.`);
+            }
+            return updatePackage(pkg.id, { lockerPrice });
+          })
+        );
+        await updateSettings(formData);
+        toast.success('Locker count and package locker prices updated successfully!');
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Failed to save locker settings.');
+      }
+      return;
     }
     void updateSettings(formData)
       .then(() => toast.success('Settings updated successfully!'))
@@ -726,6 +754,49 @@ export const Settings: React.FC = () => {
                 className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"
               />
             </label>
+            <div className="space-y-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900">Locker Price by Package</h4>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Set a different locker price for each regular or monthly package.
+                </p>
+              </div>
+              {packages.length === 0 ? (
+                <p className="text-xs text-slate-500">No packages are available.</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {packages.map((pkg) => (
+                    <label
+                      key={pkg.id}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold text-slate-700"
+                    >
+                      <span className="block mb-1">
+                        {pkg.name}
+                        <span className="ml-1 text-[10px] font-semibold text-slate-400">
+                          ({pkg.packageKind === 'monthly' ? 'Monthly' : 'Regular'})
+                        </span>
+                      </span>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-slate-500">₹</span>
+                        <input
+                          type="number"
+                          min={0}
+                          step="1"
+                          value={lockerPackagePrices[pkg.id] ?? '0'}
+                          onChange={(event) =>
+                            setLockerPackagePrices((current) => ({
+                              ...current,
+                              [pkg.id]: event.target.value,
+                            }))
+                          }
+                          className="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 bg-white font-bold"
+                        />
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               type="submit"
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#087FA5] text-white text-xs font-bold hover:bg-[#066382]"

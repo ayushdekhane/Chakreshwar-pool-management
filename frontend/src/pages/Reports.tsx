@@ -18,6 +18,7 @@ import {
   Banknote,
   Smartphone,
   WifiOff,
+  LockKeyhole,
 } from 'lucide-react';
 import { usePwa } from '../hooks/usePwa';
 import {
@@ -152,6 +153,7 @@ export const Reports: React.FC = () => {
       const swimChg = daySessions.reduce((acc, s) => acc + s.swimmingCharges, 0);
       const extChg = daySessions.reduce((acc, s) => acc + s.extensionCharges, 0);
       const rentChg = daySessions.reduce((acc, s) => acc + s.rentalCharges, 0);
+      const lockerChg = daySessions.reduce((acc, s) => acc + (s.lockerCharges || 0), 0);
       const totalChg = daySessions.reduce((acc, s) => acc + s.totalCharges, 0);
       const monthlyPackageChg = dayMonthlyMemberships.reduce(
         (total, membership) => total + membership.price,
@@ -179,6 +181,7 @@ export const Reports: React.FC = () => {
         swimmingCharges: swimChg + monthlyPackageChg,
         extensionCharges: extChg,
         rentalCharges: rentChg,
+        lockerCharges: lockerChg,
         totalCharges: totalChg + monthlyPackageChg,
         cash: cash + monthlyCash,
         online: online + monthlyOnline,
@@ -190,6 +193,7 @@ export const Reports: React.FC = () => {
   // Monthly summary cards totals
   const monthlySwimRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.swimmingCharges, 0);
   const monthlyRentalRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.rentalCharges, 0);
+  const monthlyLockerRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.lockerCharges, 0);
   const monthlyExtRevenue = monthlyDailyBreakdown.reduce((acc, d) => acc + d.extensionCharges, 0);
   const monthlyCollections = monthlyDailyBreakdown.reduce((acc, d) => acc + d.cash + d.online, 0);
   const monthlyTotalSwimmers = monthlyDailyBreakdown.reduce((acc, d) => acc + d.swimmers, 0);
@@ -275,6 +279,7 @@ export const Reports: React.FC = () => {
       'Entry Time': formatTime(s.entryTime),
       'Expiry / Exit Time': s.actualExitTime ? formatTime(s.actualExitTime) : formatTime(s.scheduledExitTime),
       'Swimming Charges': s.swimmingCharges,
+      'Locker Charges': s.lockerCharges,
       'Paid Amount': s.paidAmount,
       'Payment Method': paymentMethod,
       'Payment Status': s.paymentStatus,
@@ -312,6 +317,7 @@ export const Reports: React.FC = () => {
       'Individual Entries': d.individualEntries,
       'Group Entries': d.groupEntries,
       'Swimming Charges': d.swimmingCharges,
+      'Locker Charges': d.lockerCharges,
       'Equipment Charges': d.rentalCharges,
       'Total Charges': d.totalCharges,
       'Cash Received': d.cash,
@@ -507,6 +513,14 @@ export const Reports: React.FC = () => {
               iconColor="text-slate-700"
             />
             <StatCard
+              title="Locker Fees"
+              value={formatCurrency(dailySessions.reduce((total, session) => total + (session.lockerCharges || 0), 0))}
+              subtitle="Locker amount collected"
+              icon={LockKeyhole}
+              iconBgColor="bg-cyan-50"
+              iconColor="text-cyan-700"
+            />
+            <StatCard
               title="Extensions"
               value={formatCurrency(dailyExtCharges)}
               subtitle="Overtime fees"
@@ -599,6 +613,7 @@ export const Reports: React.FC = () => {
                     <th className="py-3 px-3">Entry / Exit Times</th>
                     <th className="py-3 px-3">Duration</th>
                     <th className="py-3 px-3">Swim Fee</th>
+                    <th className="py-3 px-3">Locker Fee</th>
                     <th className="py-3 px-3">Ext Fee</th>
                     <th className="py-3 px-3">Rental Fee</th>
                     <th className="py-3 px-3">Total Bill</th>
@@ -610,7 +625,7 @@ export const Reports: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {dailySessions.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="py-12 text-center text-slate-400">
+                      <td colSpan={12} className="py-12 text-center text-slate-400">
                         <Calendar className="w-10 h-10 mx-auto mb-2 text-slate-300" />
                         <p className="font-semibold text-slate-600">No sessions recorded on {selectedDate}</p>
                         <p className="text-[11px] text-slate-400">
@@ -649,6 +664,9 @@ export const Reports: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 font-medium">
                           {formatCurrency(s.swimmingCharges)}
+                        </td>
+                        <td className="py-3 px-3 font-medium text-[#087FA5]">
+                          {formatCurrency(s.lockerCharges || 0)}
                         </td>
                         <td className="py-3 px-3 font-medium">
                           {formatCurrency(s.extensionCharges)}
@@ -884,6 +902,14 @@ export const Reports: React.FC = () => {
               iconColor="text-pink-700"
             />
             <StatCard
+              title="Locker Revenue"
+              value={formatCurrency(monthlyLockerRevenue)}
+              subtitle="Locker collected"
+              icon={LockKeyhole}
+              iconBgColor="bg-cyan-50"
+              iconColor="text-cyan-700"
+            />
+            <StatCard
               title="Extension Revenue"
               value={formatCurrency(monthlyExtRevenue)}
               subtitle="Overtime fees"
@@ -1065,6 +1091,7 @@ export const Reports: React.FC = () => {
                     <th className="py-3 px-3">Swimmers</th>
                     <th className="py-3 px-3">Ind / Grp</th>
                     <th className="py-3 px-3">Swim Fee</th>
+                    <th className="py-3 px-3">Locker Fee</th>
                     <th className="py-3 px-3">Rent Fee</th>
                     <th className="py-3 px-3">Total Charges</th>
                     <th className="py-3 px-3">Cash</th>
@@ -1098,6 +1125,9 @@ export const Reports: React.FC = () => {
                       </td>
                       <td className="py-3 px-3">
                         {row.swimmingCharges > 0 ? formatCurrency(row.swimmingCharges) : '-'}
+                      </td>
+                      <td className="py-3 px-3 text-[#087FA5]">
+                        {row.lockerCharges > 0 ? formatCurrency(row.lockerCharges) : '-'}
                       </td>
                       <td className="py-3 px-3">
                         {row.rentalCharges > 0 ? formatCurrency(row.rentalCharges) : '-'}

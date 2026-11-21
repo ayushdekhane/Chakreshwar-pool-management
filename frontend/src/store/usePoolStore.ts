@@ -433,8 +433,9 @@ function transformDbData(
     const paidSum = sessionPayments.reduce((sum, p) => sum + p.amount, 0);
     const rentalCharges = sessionRentals.reduce((sum, r) => sum + r.totalRentalAmount, 0);
     const swimmingCharges = Number(s.session_amount);
+    const lockerCharges = Number(s.locker_charges ?? 0);
     const penaltyCharges = Number(s.penalty_charge ?? 0);
-    const totalCharges = swimmingCharges + rentalCharges + penaltyCharges;
+    const totalCharges = swimmingCharges + lockerCharges + rentalCharges + penaltyCharges;
     const outstanding = Math.max(0, totalCharges - paidSum);
 
     const isGroup = Boolean(s.group_code);
@@ -457,6 +458,7 @@ function transformDbData(
       lockerNumbers: s.locker_numbers || [],
       status: s.status as SessionStatus,
       swimmingCharges,
+      lockerCharges,
       extensionCharges: 0,
       rentalCharges,
       penaltyCharges,
@@ -840,7 +842,9 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     const lockerNumbers = validateLockerSelection(data.lockerNumbers, get().sessions, get().settings.lockerCount);
     const pkg = get().packages.find((p) => p.id === data.packageId);
     const duration = data.customDuration || pkg?.durationMinutes || 60;
-    const swimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price ?? 100);
+    const baseSwimCharge = data.customAmount !== undefined ? data.customAmount : (pkg?.price ?? 100);
+    const lockerCharge = (data.lockerNumbers?.length || 0) * (pkg?.lockerPrice ?? 0);
+    const swimCharge = baseSwimCharge;
     const equipment = get().equipment;
 
     const selectedRentals = (data.rentals || []).map((rental) => {
@@ -904,6 +908,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
       session_amount: swimCharge,
+      locker_charges: lockerCharge,
       package_id: pkg?.id || null,
       package_name: pkg?.name || 'Custom Package',
       costume_used: selectedRentals.length > 0,
@@ -1062,7 +1067,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       (total, rental) => total + rental.totalRentalAmount,
       0
     );
-    const totalCharges = swimCharge + rentalCharge;
+    const totalCharges = swimCharge + lockerCharge + rentalCharge;
     const paidAmount = data.paymentStatus === 'paid' ? totalCharges : (data.paidAmount || 0);
     const outstanding = Math.max(0, totalCharges - paidAmount);
 
@@ -1158,6 +1163,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       lockerNumbers,
       status: 'active',
       swimmingCharges: swimCharge,
+      lockerCharges: lockerCharge,
       extensionCharges: 0,
       rentalCharges: rentalCharge,
       totalCharges,
@@ -1203,6 +1209,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
     if (!pkg) {
       throw new Error('The selected package is no longer available. Choose an active package and try again.');
     }
+    const lockerCharge = lockerNumbers.length * (pkg.lockerPrice ?? 0);
     const duration = data.customDuration || pkg?.durationMinutes || 60;
     const scheduledExit = new Date(now.getTime() + duration * 60000).toISOString();
     const groupCode = `GRP-${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`;
@@ -1278,6 +1285,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       scheduled_exit_time: scheduledExit,
       duration_minutes: duration,
       session_amount: data.totalPrice,
+      locker_charges: lockerCharge,
       costume_used: selectedRentals.length > 0,
       locker_numbers: lockerNumbers,
       status: 'active' as const,
@@ -1499,7 +1507,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       sessionPayments.push(newPayment);
     }
 
-    const totalCharges = data.totalPrice + rentalCharge;
+    const totalCharges = data.totalPrice + lockerCharge + rentalCharge;
     const paidAmount = data.initialPayment;
     const outstanding = Math.max(0, totalCharges - paidAmount);
 
@@ -1520,6 +1528,7 @@ export const usePoolStore = create<PoolStore>((set, get) => ({
       lockerNumbers,
       status: 'active',
       swimmingCharges: data.totalPrice,
+      lockerCharges: lockerCharge,
       extensionCharges: 0,
       rentalCharges: rentalCharge,
       totalCharges,

@@ -10,6 +10,7 @@ interface DbPackage {
   is_active: boolean;
   package_kind?: 'regular' | 'monthly';
   duration_months?: number;
+  locker_price?: number;
 }
 
 const fromDatabase = (row: DbPackage): Package => ({
@@ -21,6 +22,7 @@ const fromDatabase = (row: DbPackage): Package => ({
   isActive: row.is_active,
   packageKind: row.package_kind || 'regular',
   durationMonths: row.duration_months || (row.package_kind === 'monthly' ? 1 : undefined),
+  lockerPrice: Number(row.locker_price || 0),
 });
 
 const toDatabase = (pkg: Omit<Package, 'id' | 'swimmersCount'>) => ({
@@ -31,6 +33,7 @@ const toDatabase = (pkg: Omit<Package, 'id' | 'swimmersCount'>) => ({
   is_active: pkg.isActive,
   package_kind: pkg.packageKind || 'regular',
   duration_months: pkg.durationMonths || (pkg.packageKind === 'monthly' ? 1 : undefined),
+  locker_price: pkg.lockerPrice ?? 0,
 });
 
 function ensureConfigured() {
@@ -87,6 +90,7 @@ export const packageService = {
     }
     if (updates.isActive !== undefined) databaseUpdates.is_active = updates.isActive;
     if (updates.packageKind !== undefined) databaseUpdates.package_kind = updates.packageKind;
+    if (updates.lockerPrice !== undefined) databaseUpdates.locker_price = updates.lockerPrice;
     if (updates.durationMonths !== undefined) {
       databaseUpdates.duration_months = updates.durationMonths;
       databaseUpdates.duration_minutes = updates.durationMonths * 30 * 24 * 60;

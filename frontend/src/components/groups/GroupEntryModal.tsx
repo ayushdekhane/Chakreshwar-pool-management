@@ -36,7 +36,9 @@ const getAccessoryKey = (equipmentId: string, type: 'rental' | 'sale') =>
 export const GroupEntryModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
   const closeModal = usePoolStore((state) => state.closeModal);
-  const packages = usePoolStore((state) => state.packages.filter((p) => p.isActive));
+  const packages = usePoolStore((state) =>
+    state.packages.filter((p) => p.isActive && p.packageKind !== 'monthly')
+  );
   const equipment = usePoolStore((state) => state.equipment);
   const sessions = usePoolStore((state) => state.sessions);
   const settings = usePoolStore((state) => state.settings);
@@ -92,7 +94,11 @@ export const GroupEntryModal: React.FC = () => {
       : item?.defaultRate ?? 0;
     return total + rate * selection.quantity;
   }, 0);
-  const groupTotal = calculatedTotal + equipmentTotal;
+  const lockerTotal =
+    wantsLocker
+      ? selectedLockers.length * (selectedPkg?.lockerPrice ?? 0)
+      : 0;
+  const groupTotal = calculatedTotal + equipmentTotal + lockerTotal;
   const previousGroupTotal = useRef(groupTotal);
 
   useEffect(() => {
@@ -234,6 +240,14 @@ export const GroupEntryModal: React.FC = () => {
           </label>
           {wantsLocker && (
             <div className="mt-3">
+              <div className="mb-2 text-xs font-bold text-slate-600">
+                Locker charge: {formatCurrency(selectedPkg?.lockerPrice ?? 0)} per locker
+                {selectedLockers.length > 0 && (
+                  <span className="ml-1 text-[#70218C]">
+                    ({selectedLockers.length} × {formatCurrency(selectedPkg?.lockerPrice ?? 0)} = {formatCurrency(lockerTotal)})
+                  </span>
+                )}
+              </div>
               <LockerSelector
                 sessions={sessions}
                 settings={settings}
@@ -478,6 +492,7 @@ export const GroupEntryModal: React.FC = () => {
             <span>
               {memberCount} Members × {formatCurrency(selectedPkg?.price || 0)}
             </span>
+            {lockerTotal > 0 && <span>Locker: {formatCurrency(lockerTotal)}</span>}
             <span className="text-sm font-extrabold text-[#EFB33A]">
               Group Total: {formatCurrency(groupTotal)}
             </span>

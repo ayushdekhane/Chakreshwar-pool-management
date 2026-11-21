@@ -24,6 +24,7 @@ export interface Package {
   isActive: boolean;
   packageKind?: 'regular' | 'monthly';
   durationMonths?: number;
+  lockerPrice?: number;
   isCustom?: boolean;
   swimmersCount?: number;
 }
@@ -106,6 +107,7 @@ export interface Session {
   lockerNumbers?: number[];
   status: SessionStatus;
   swimmingCharges: number;
+  lockerCharges?: number;
   extensionCharges: number;
   penaltyCharges?: number;
   penaltyApplied?: boolean;

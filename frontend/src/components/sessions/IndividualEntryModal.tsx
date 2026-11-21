@@ -106,7 +106,11 @@ export const IndividualEntryModal: React.FC = () => {
       : item?.defaultRate ?? 0;
     return total + rate * selection.quantity;
   }, 0);
-  const totalBill = swimCharge + rentalCharge;
+  const lockerCharge =
+    wantsLocker
+      ? selectedLockers.length * (selectedPkg?.lockerPrice ?? 0)
+      : 0;
+  const totalBill = swimCharge + rentalCharge + lockerCharge;
 
   useEffect(() => {
     if (
@@ -373,6 +377,14 @@ export const IndividualEntryModal: React.FC = () => {
           </label>
           {wantsLocker && (
             <div className="mt-3">
+              <div className="mb-2 text-xs font-bold text-slate-600">
+                Locker charge: {formatCurrency(selectedPkg?.lockerPrice ?? 0)} per locker
+                {selectedLockers.length > 0 && (
+                  <span className="ml-1 text-[#087FA5]">
+                    ({selectedLockers.length} × {formatCurrency(selectedPkg?.lockerPrice ?? 0)} = {formatCurrency(lockerCharge)})
+                  </span>
+                )}
+              </div>
               <LockerSelector
                 sessions={sessions}
                 settings={settings}
@@ -511,6 +523,7 @@ export const IndividualEntryModal: React.FC = () => {
           <div className="flex items-center justify-between text-xs text-slate-300 pb-2 border-b border-slate-800">
             <span>Swimming Charge: {formatCurrency(swimCharge)}</span>
             {rentalCharge > 0 && <span>Equipment: {formatCurrency(rentalCharge)}</span>}
+            {lockerCharge > 0 && <span>Locker: {formatCurrency(lockerCharge)}</span>}
             <span className="text-sm font-bold text-[#EFB33A]">
               Total Bill: {formatCurrency(totalBill)}
             </span>

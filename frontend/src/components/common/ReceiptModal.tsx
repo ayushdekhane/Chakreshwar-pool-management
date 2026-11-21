@@ -113,6 +113,16 @@ export const ReceiptModal: React.FC = () => {
               <span>{formatCurrency(session.swimmingCharges)}</span>
             </div>
 
+            {(session.lockerCharges || 0) > 0 && (
+              <div className="flex justify-between">
+                <span>
+                  Locker Charges ({session.lockerNumbers?.length || 0} locker
+                  {(session.lockerNumbers?.length || 0) === 1 ? '' : 's'})
+                </span>
+                <span>{formatCurrency(session.lockerCharges || 0)}</span>
+              </div>
+            )}
+
             {session.extensionCharges > 0 && (
               <div className="flex justify-between">
                 <span>Session Time Extension (+{session.durationMinutes - 60}m)</span>

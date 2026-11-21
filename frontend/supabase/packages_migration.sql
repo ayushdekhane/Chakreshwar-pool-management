@@ -18,6 +18,10 @@ ALTER TABLE public.packages
 ALTER TABLE public.packages
     ADD COLUMN IF NOT EXISTS duration_months INTEGER;
 
+ALTER TABLE public.packages
+    ADD COLUMN IF NOT EXISTS locker_price NUMERIC(10, 2) NOT NULL DEFAULT 0
+    CHECK (locker_price >= 0);
+
 UPDATE public.packages
 SET duration_months = 1
 WHERE package_kind = 'monthly' AND duration_months IS NULL;
@@ -46,6 +50,10 @@ ALTER TABLE public.sessions
 
 ALTER TABLE public.sessions
     ADD COLUMN IF NOT EXISTS package_name TEXT;
+
+ALTER TABLE public.sessions
+    ADD COLUMN IF NOT EXISTS locker_charges NUMERIC(10, 2) NOT NULL DEFAULT 0
+    CHECK (locker_charges >= 0);
 
 ALTER TABLE public.packages ENABLE ROW LEVEL SECURITY;
 

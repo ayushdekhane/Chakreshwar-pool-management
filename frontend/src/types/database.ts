@@ -20,6 +20,7 @@ export interface DbSession {
   scheduled_exit_time: string;
   actual_exit_time: string | null;
   locker_numbers?: number[] | null;
+  locker_charges?: number;
   duration_minutes: number;
   actual_duration_minutes: number | null;
   session_amount: number;

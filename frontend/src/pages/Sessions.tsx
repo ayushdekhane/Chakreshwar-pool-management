@@ -396,6 +396,11 @@ export const Sessions: React.FC = () => {
                           <div className="font-bold text-slate-900">
                             {formatCurrency(session.totalCharges)}
                           </div>
+                          {(session.lockerCharges || 0) > 0 && (
+                            <div className="text-[10px] text-[#087FA5] font-semibold">
+                              Locker: {formatCurrency(session.lockerCharges || 0)}
+                            </div>
+                          )}
                           {session.penaltyApplied && (session.penaltyCharges || 0) > 0 && (
                             <div className="text-[10px] text-amber-700 font-semibold">
                               Penalty: {formatCurrency(session.penaltyCharges || 0)} · {session.penaltyIntervals || 0} intervals · {session.penaltyMinutes || 0}m extra

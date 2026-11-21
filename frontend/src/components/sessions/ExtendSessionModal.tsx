@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { Clock, Plus, ArrowRight, ShieldCheck } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatTime, formatCurrency } from '../../utils';
+import { formatTime, formatCurrency, normalizeNonNegativeInput } from '../../utils';
 
 export const ExtendSessionModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -107,8 +107,12 @@ export const ExtendSessionModal: React.FC = () => {
               placeholder="e.g. 20"
               value={customMinutes}
               onChange={(e) => {
-                setCustomMinutes(e.target.value);
-                const val = parseInt(e.target.value, 10);
+                const value = normalizeNonNegativeInput(e.target.value, 1);
+                if (e.target.value !== '' && Number(e.target.value) < 1) {
+                  toast.error('Duration must be at least 1 minute.');
+                }
+                setCustomMinutes(value);
+                const val = parseInt(value, 10);
                 if (val > 0) {
                   setExtensionFee(calculateRateForMinutes(val));
                 }
@@ -124,7 +128,13 @@ export const ExtendSessionModal: React.FC = () => {
             <input
               type="number"
               value={customFee !== '' ? customFee : extensionFee}
-              onChange={(e) => setCustomFee(e.target.value)}
+              onChange={(e) => {
+                const value = normalizeNonNegativeInput(e.target.value, 0);
+                if (e.target.value !== '' && Number(e.target.value) < 0) {
+                  toast.error('Extension fee cannot be negative.');
+                }
+                setCustomFee(value);
+              }}
               className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-300 bg-white font-bold text-[#087FA5]"
             />
           </div>

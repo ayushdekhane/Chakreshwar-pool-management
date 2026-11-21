@@ -26,7 +26,7 @@ import {
   LockKeyhole,
 } from 'lucide-react';
 import { usePoolStore } from '../store/usePoolStore';
-import { formatCurrency, cn } from '../utils';
+import { formatCurrency, cn, normalizeNonNegativeInput } from '../utils';
 import { toast } from 'sonner';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { authService } from '../services/authService';
@@ -574,12 +574,16 @@ export const Settings: React.FC = () => {
                   step={1}
                   value={formData.penaltyAfterMinutes}
                   disabled={!formData.penaltyEnabled}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const value = normalizeNonNegativeInput(e.target.value, 0);
+                    if (e.target.value !== '' && Number(e.target.value) < 0) {
+                      toast.error('Penalty interval cannot be negative.');
+                    }
                     setFormData({
                       ...formData,
-                      penaltyAfterMinutes: parseInt(e.target.value, 10) || 0,
-                    })
-                  }
+                      penaltyAfterMinutes: parseInt(value, 10) || 0,
+                    });
+                  }}
                   className="w-full px-3 py-2 text-base font-extrabold rounded-xl border border-slate-300 text-amber-700"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -597,12 +601,16 @@ export const Settings: React.FC = () => {
                   step="0.01"
                   value={formData.penaltyAmount}
                   disabled={!formData.penaltyEnabled}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const value = normalizeNonNegativeInput(e.target.value, 0);
+                    if (e.target.value !== '' && Number(e.target.value) < 0) {
+                      toast.error('Penalty amount cannot be negative.');
+                    }
                     setFormData({
                       ...formData,
-                      penaltyAmount: parseFloat(e.target.value) || 0,
-                    })
-                  }
+                      penaltyAmount: parseFloat(value) || 0,
+                    });
+                  }}
                   className="w-full px-3 py-2 text-base font-extrabold rounded-xl border border-slate-300 text-amber-700"
                 />
                 <p className="text-[11px] text-slate-500 mt-1">
@@ -749,7 +757,13 @@ export const Settings: React.FC = () => {
                 step={1}
                 value={formData.lockerCount}
                 onChange={(event) =>
-                  setFormData({ ...formData, lockerCount: Math.max(0, Number(event.target.value)) })
+                  {
+                    const value = normalizeNonNegativeInput(event.target.value, 0);
+                    if (event.target.value !== '' && Number(event.target.value) < 0) {
+                      toast.error('Locker count cannot be negative.');
+                    }
+                    setFormData({ ...formData, lockerCount: Math.max(0, Number(value) || 0) });
+                  }
                 }
                 className="mt-1 w-full px-3 py-2 rounded-xl border border-slate-300 bg-white"
               />
@@ -783,11 +797,16 @@ export const Settings: React.FC = () => {
                           min={0}
                           step="1"
                           value={lockerPackagePrices[pkg.id] ?? '0'}
-                          onChange={(event) =>
+                          onChange={(event) => {
+                            const value = normalizeNonNegativeInput(event.target.value, 0);
+                            if (event.target.value !== '' && Number(event.target.value) < 0) {
+                              toast.error(`Locker price for ${pkg.name} cannot be negative.`);
+                            }
                             setLockerPackagePrices((current) => ({
                               ...current,
-                              [pkg.id]: event.target.value,
-                            }))
+                              [pkg.id]: value,
+                            }));
+                          }
                           }
                           className="w-full pl-7 pr-3 py-2 rounded-lg border border-slate-300 bg-white font-bold"
                         />
@@ -880,7 +899,11 @@ export const Settings: React.FC = () => {
                   min={0}
                   step={1}
                   value={newEquipment.totalStock}
-                  onChange={(event) => setNewEquipment({ ...newEquipment, totalStock: event.target.value })}
+                  onChange={(event) => {
+                    const value = normalizeNonNegativeInput(event.target.value, 0);
+                    if (event.target.value !== '' && Number(event.target.value) < 0) toast.error('Total stock cannot be negative.');
+                    setNewEquipment({ ...newEquipment, totalStock: value });
+                  }}
                   className="mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-normal"
                 />
               </label>
@@ -892,7 +915,11 @@ export const Settings: React.FC = () => {
                   min={0}
                   step={1}
                   value={newEquipment.availableStock}
-                  onChange={(event) => setNewEquipment({ ...newEquipment, availableStock: event.target.value })}
+                  onChange={(event) => {
+                    const value = normalizeNonNegativeInput(event.target.value, 0);
+                    if (event.target.value !== '' && Number(event.target.value) < 0) toast.error('Available stock cannot be negative.');
+                    setNewEquipment({ ...newEquipment, availableStock: value });
+                  }}
                   className="mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-normal"
                 />
               </label>
@@ -904,7 +931,11 @@ export const Settings: React.FC = () => {
                   min={0}
                   step="0.01"
                   value={newEquipment.defaultRate}
-                  onChange={(event) => setNewEquipment({ ...newEquipment, defaultRate: event.target.value })}
+                  onChange={(event) => {
+                    const value = normalizeNonNegativeInput(event.target.value, 0);
+                    if (event.target.value !== '' && Number(event.target.value) < 0) toast.error('Price cannot be negative.');
+                    setNewEquipment({ ...newEquipment, defaultRate: value });
+                  }}
                   className="mt-1 w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white font-normal"
                 />
               </label>
@@ -934,9 +965,11 @@ export const Settings: React.FC = () => {
                     min={0}
                     step="0.01"
                     value={newEquipment.saleRate}
-                    onChange={(event) =>
-                      setNewEquipment({ ...newEquipment, saleRate: event.target.value })
-                    }
+                    onChange={(event) => {
+                      const value = normalizeNonNegativeInput(event.target.value, 0);
+                      if (event.target.value !== '' && Number(event.target.value) < 0) toast.error('Sale price cannot be negative.');
+                      setNewEquipment({ ...newEquipment, saleRate: value });
+                    }}
                     className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 font-normal"
                   />
                 </label>
@@ -986,10 +1019,22 @@ export const Settings: React.FC = () => {
                         const updateDraft = (
                           field: 'name' | 'totalStock' | 'availableStock' | 'defaultRate' | 'saleRate',
                           value: string
-                        ) => setRentalDrafts((current) => ({
-                          ...current,
-                          [eq.id]: { ...draft, [field]: value },
-                        }));
+                        ) => {
+                          const normalizedValue = field === 'name'
+                            ? value
+                            : normalizeNonNegativeInput(value, 0);
+                          if (
+                            field !== 'name' &&
+                            value !== '' &&
+                            Number(value) < 0
+                          ) {
+                            toast.error(`${eq.name} values cannot be negative.`);
+                          }
+                          setRentalDrafts((current) => ({
+                            ...current,
+                            [eq.id]: { ...draft, [field]: normalizedValue },
+                          }));
+                        };
                         const updateSize = (size: string, checked: boolean) =>
                           setRentalDrafts((current) => {
                             const currentDraft = current[eq.id] || draft;

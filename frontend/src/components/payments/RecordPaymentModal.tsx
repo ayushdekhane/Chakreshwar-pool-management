@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { CreditCard, CheckCircle2, User, Receipt, Banknote, Smartphone } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { calculateOvertimePenalty, formatCurrency } from '../../utils';
+import { calculateOvertimePenalty, formatCurrency, normalizeNonNegativeInput } from '../../utils';
 import { PaymentMethod } from '../../types';
 
 export const RecordPaymentModal: React.FC = () => {
@@ -178,7 +178,13 @@ export const RecordPaymentModal: React.FC = () => {
               min="1"
               step="any"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                const value = normalizeNonNegativeInput(e.target.value, 1);
+                if (e.target.value !== '' && Number(e.target.value) < 1) {
+                  toast.error('Payment amount must be 1 or greater.');
+                }
+                setAmount(value);
+              }}
               className="w-full pl-8 pr-3 py-2 text-base font-extrabold rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-[#087FA5]"
               placeholder="0.00"
             />

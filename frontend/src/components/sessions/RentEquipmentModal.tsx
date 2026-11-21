@@ -3,7 +3,7 @@ import { PlusCircle, Shirt } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, normalizeNonNegativeInput } from '../../utils';
 
 type SelectedAccessory = {
   equipmentId: string;
@@ -249,13 +249,19 @@ export const RentEquipmentModal: React.FC = () => {
                         max={item.availableStock}
                         value={selected.quantity}
                         onChange={(event) =>
-                          setSelectedAccessories((current) => ({
-                            ...current,
-                            [key]: {
-                              ...selected,
-                              quantity: Math.max(1, parseInt(event.target.value, 10) || 1),
-                            },
-                          }))
+                          {
+                            const value = normalizeNonNegativeInput(event.target.value, 1);
+                            if (event.target.value !== '' && Number(event.target.value) < 1) {
+                              toast.error('Equipment quantity must be at least 1.');
+                            }
+                            setSelectedAccessories((current) => ({
+                              ...current,
+                              [key]: {
+                                ...selected,
+                                quantity: parseInt(value, 10) || 1,
+                              },
+                            }));
+                          }
                         }
                         className="px-2 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
                         placeholder="Qty"

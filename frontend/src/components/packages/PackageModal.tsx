@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Tag, CheckCircle2 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
+import { normalizeNonNegativeInput } from '../../utils';
 
 export const PackageModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -128,7 +129,11 @@ export const PackageModal: React.FC = () => {
                 type="number"
                 min="1"
                 value={durationMonths}
-                onChange={(e) => setDurationMonths(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => {
+                  const value = normalizeNonNegativeInput(e.target.value, 1);
+                  if (Number(value) < 1) toast.error('Duration must be at least 1 month.');
+                  setDurationMonths(parseInt(value, 10) || 1);
+                }}
                 className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
                 required
               />
@@ -143,7 +148,11 @@ export const PackageModal: React.FC = () => {
                 min="1"
                 max="360"
                 value={durationMinutes}
-                onChange={(e) => setDurationMinutes(parseInt(e.target.value, 10) || 0)}
+                onChange={(e) => {
+                  const value = normalizeNonNegativeInput(e.target.value, 1);
+                  if (Number(value) < 1) toast.error('Duration must be at least 1 minute.');
+                  setDurationMinutes(parseInt(value, 10) || 1);
+                }}
                 className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
                 required
               />
@@ -158,7 +167,13 @@ export const PackageModal: React.FC = () => {
               type="number"
               min="0"
               value={price}
-              onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                const value = normalizeNonNegativeInput(e.target.value, 0);
+                if (e.target.value !== '' && Number(e.target.value) < 0) {
+                  toast.error('Price cannot be negative.');
+                }
+                setPrice(parseFloat(value) || 0);
+              }}
               className="w-full px-3 py-2 text-sm font-bold text-[#087FA5] rounded-xl border border-slate-300 focus:ring-2 focus:ring-[#087FA5]"
               required
             />

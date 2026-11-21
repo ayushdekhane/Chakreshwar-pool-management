@@ -7,6 +7,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function normalizeNonNegativeInput(value: string, minimum = 0): string {
+  if (value === '') return '';
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < minimum) return String(minimum);
+  return value;
+}
+
 export function formatCurrency(amount: number): string {
   if (isNaN(amount)) return '₹0';
   return new Intl.NumberFormat('en-IN', {

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { CalendarDays, Edit2, IndianRupee, Plus, User, Phone, CheckCircle2, Trash2, Eye, Clock, Printer } from 'lucide-react';
 import { toast } from 'sonner';
 import { usePoolStore } from '../store/usePoolStore';
-import { formatCurrency } from '../utils';
+import { formatCurrency, normalizeNonNegativeInput } from '../utils';
 import { Package } from '../types';
 
 export const Monthly: React.FC = () => {
@@ -236,7 +236,13 @@ export const Monthly: React.FC = () => {
                       type="number"
                       min="0"
                       value={editedPrice}
-                      onChange={(e) => setEditedPrice(e.target.value)}
+                      onChange={(e) => {
+                        const value = normalizeNonNegativeInput(e.target.value, 0);
+                        if (e.target.value !== '' && Number(e.target.value) < 0) {
+                          toast.error('Package price cannot be negative.');
+                        }
+                        setEditedPrice(value);
+                      }}
                       className="w-28 pl-7 pr-2 py-2 text-sm font-bold rounded-lg border border-slate-300"
                       autoFocus
                     />

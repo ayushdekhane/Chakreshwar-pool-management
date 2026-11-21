@@ -3,7 +3,7 @@ import { CalendarDays, CheckCircle2, Phone, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, normalizeNonNegativeInput } from '../../utils';
 
 export const MonthlyEntryModal: React.FC = () => {
   const activeModal = usePoolStore((state) => state.activeModal);
@@ -156,7 +156,13 @@ export const MonthlyEntryModal: React.FC = () => {
             min="1"
             max="120"
             value={customerAge}
-            onChange={(event) => setCustomerAge(event.target.value)}
+            onChange={(event) => {
+              const value = normalizeNonNegativeInput(event.target.value, 1);
+              if (event.target.value !== '' && Number(event.target.value) < 1) {
+                toast.error('Age must be 1 or greater.');
+              }
+              setCustomerAge(value);
+            }}
             placeholder="Optional"
             className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#087FA5]"
           />
@@ -223,7 +229,13 @@ export const MonthlyEntryModal: React.FC = () => {
               type="number"
               min="0"
               value={paidAmount}
-              onChange={(event) => setPaidAmount(Number(event.target.value) || 0)}
+              onChange={(event) => {
+                const value = normalizeNonNegativeInput(event.target.value, 0);
+                if (event.target.value !== '' && Number(event.target.value) < 0) {
+                  toast.error('Paid amount cannot be negative.');
+                }
+                setPaidAmount(Number(value) || 0);
+              }}
               className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300"
             />
           </div>

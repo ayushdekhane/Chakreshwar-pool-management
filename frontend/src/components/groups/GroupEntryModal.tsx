@@ -7,7 +7,7 @@ import { Phone, User, Clock, CheckCircle2, LockKeyhole } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { LockerSelector } from '../common/LockerSelector';
 import { usePoolStore } from '../../store/usePoolStore';
-import { formatCurrency } from '../../utils';
+import { formatCurrency, normalizeNonNegativeInput } from '../../utils';
 
 const schema = z.object({
   leaderName: z.string().trim().min(2, 'Leader name required'),
@@ -429,7 +429,11 @@ export const GroupEntryModal: React.FC = () => {
                         step={1}
                         value={quantity}
                         onChange={(event) => {
-                          const nextQuantity = Number(event.target.value);
+                          const value = normalizeNonNegativeInput(event.target.value, 1);
+                          if (event.target.value !== '' && Number(event.target.value) < 1) {
+                            toast.error('Equipment quantity must be at least 1.');
+                          }
+                          const nextQuantity = Number(value);
                           setSelectedAccessories((current) => ({
                             ...current,
                             [accessoryKey]: {
@@ -536,6 +540,7 @@ export const GroupEntryModal: React.FC = () => {
                 </label>
                 <input
                   type="number"
+                  min="0"
                   {...register('initialPayment', { valueAsNumber: true })}
                   className="w-full px-3 py-1.5 text-xs rounded-lg bg-slate-800 border border-slate-700 text-white font-bold"
                 />

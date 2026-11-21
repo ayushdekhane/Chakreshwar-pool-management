@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { usePoolStore } from '../../store/usePoolStore';
-import { calculateOvertimePenalty, formatCurrency, formatTime } from '../../utils';
+import { calculateOvertimePenalty, formatCurrency, formatTime, normalizeNonNegativeInput } from '../../utils';
 import { PaymentMethod } from '../../types';
 
 export const CheckoutModal: React.FC = () => {
@@ -378,7 +378,13 @@ export const CheckoutModal: React.FC = () => {
                     min="1"
                     step="any"
                     value={payAmount}
-                    onChange={(e) => setPayAmount(e.target.value)}
+                    onChange={(e) => {
+                      const value = normalizeNonNegativeInput(e.target.value, 1);
+                      if (e.target.value !== '' && Number(e.target.value) < 1) {
+                        toast.error('Collected amount must be 1 or greater.');
+                      }
+                      setPayAmount(value);
+                    }}
                     className="w-full pl-8 pr-3 py-2 text-sm font-extrabold rounded-xl border border-slate-300 text-slate-900 focus:ring-2 focus:ring-[#087FA5]"
                   />
                 </div>
